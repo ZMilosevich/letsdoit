@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+uploads/
+.marlow/
+.design-reference/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
