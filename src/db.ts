@@ -1,0 +1,196 @@
+import Database from 'better-sqlite3';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const dbPath = process.env.SQLITE_PATH || path.join(process.cwd(), 'data', 'trainer.db');
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+
+export const db = new Database(dbPath);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS clients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  initials TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  age INTEGER NOT NULL,
+  weight REAL NOT NULL,
+  height INTEGER NOT NULL,
+  fitness_level TEXT NOT NULL,
+  condition TEXT NOT NULL,
+  limitations TEXT NOT NULL DEFAULT '',
+  equipment TEXT NOT NULL,
+  preferences TEXT NOT NULL,
+  days_per_week INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'on_track',
+  last_active TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  week_label TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  workouts_json TEXT NOT NULL,
+  rationale TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  scheduled_date TEXT NOT NULL,
+  status TEXT NOT NULL,
+  duration INTEGER,
+  difficulty INTEGER,
+  notes TEXT NOT NULL DEFAULT '',
+  performance_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE IF NOT EXISTS progress (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  recorded_date TEXT NOT NULL,
+  weight REAL,
+  waist REAL,
+  body_fat REAL,
+  squat_max REAL,
+  feedback TEXT NOT NULL DEFAULT '',
+  photo_url TEXT
+);
+CREATE TABLE IF NOT EXISTS plan_deliveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL UNIQUE REFERENCES plans(id) ON DELETE CASCADE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL DEFAULT 'in_app',
+  available_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  sent_at TEXT,
+  viewed_at TEXT,
+  confirmed_at TEXT,
+  feedback TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`);
+
+// Lightweight migration for workspaces created before client language preference existed.
+const clientColumns = db.prepare("PRAGMA table_info(clients)").all() as { name: string }[];
+if (!clientColumns.some((column) => column.name === 'language')) {
+  db.exec("ALTER TABLE clients ADD COLUMN language TEXT NOT NULL DEFAULT 'hr'");
+}
+
+// Calendar fields were added after the original workout log, so keep existing workspaces intact.
+const sessionColumns = db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[];
+if (!sessionColumns.some((column) => column.name === 'start_time')) db.exec("ALTER TABLE sessions ADD COLUMN start_time TEXT NOT NULL DEFAULT '09:00'");
+if (!sessionColumns.some((column) => column.name === 'training_type')) db.exec("ALTER TABLE sessions ADD COLUMN training_type TEXT NOT NULL DEFAULT 'Strength'");
+if (!sessionColumns.some((column) => column.name === 'recurrence_rule')) db.exec("ALTER TABLE sessions ADD COLUMN recurrence_rule TEXT NOT NULL DEFAULT ''");
+
+db.prepare("UPDATE sessions SET start_time = CASE id WHEN 1 THEN '08:00' WHEN 2 THEN '17:00' WHEN 3 THEN '09:00' WHEN 4 THEN '07:30' WHEN 5 THEN '09:30' WHEN 6 THEN '18:00' WHEN 7 THEN '16:30' ELSE start_time END WHERE start_time = '09:00'").run();
+db.prepare("UPDATE sessions SET training_type = CASE WHEN title LIKE '%Mobility%' THEN 'Recovery' WHEN title LIKE '%run%' OR title LIKE '%interval%' THEN 'Conditioning' ELSE 'Strength' END WHERE training_type = 'Strength'").run();
+
+type Exercise = { name: string; sets: number; reps: string; intensity: string; rest: string; duration?: string; instructions: string };
+type Workout = { id: string; day: string; title: string; focus: string; duration: number; exercises: Exercise[] };
+
+export function localizeWorkouts(workouts: Workout[], language = 'hr'): Workout[] {
+  if (language !== 'hr') return workouts;
+  const words: Record<string, string> = {
+    Monday: 'Ponedjeljak', Wednesday: 'Srijeda', Friday: 'Petak', Saturday: 'Subota',
+    'Lower body strength': 'Snaga donjeg dijela tijela', 'Upper body build': 'Snaga gornjeg dijela tijela',
+    'Full body power': 'Snaga cijelog tijela', 'Aerobic capacity': 'Aerobni kapacitet', 'Mobility and recovery': 'Mobilnost i oporavak',
+    Strength: 'Snaga', Conditioning: 'Kondicija', Recovery: 'Oporavak',
+  };
+  const instructions: Record<string, string> = {
+    'Brace before each rep. Keep pressure through the whole foot.': 'Učvrstite trup prije svakog ponavljanja. Zadržite oslonac cijelim stopalom.',
+    'Hinge at the hips and keep the load close.': 'Pregib započnite iz kukova i držite opterećenje blizu tijela.',
+    'Use a range that stays pain free.': 'Koristite opseg pokreta bez boli.',
+    'Keep shoulder blades gently set throughout.': 'Tijekom cijelog pokreta lagano držite lopatice stabilnima.',
+    'Lead with the elbow without rotating.': 'Vodite laktom bez rotacije trupa.',
+    'Stack ribs over hips and move smoothly.': 'Rebra držite iznad kukova i krećite se kontrolirano.',
+    'Drive the floor away and finish tall.': 'Gurajte podlogu od sebe i završite uspravno.',
+    'Keep a straight line from shoulders to heels.': 'Zadržite ravnu liniju od ramena do peta.',
+    'Keep output repeatable across all intervals.': 'Održavajte ujednačen intenzitet kroz sve intervale.',
+    'Stay at an easy, sustainable pace.': 'Održavajte lagani, održivi tempo.',
+    'Move slowly and avoid pinching or pain.': 'Krećite se polako i izbjegavajte nelagodu ili bol.',
+  };
+  return workouts.map((workout) => ({ ...workout, day: words[workout.day] || workout.day, title: words[workout.title] || workout.title, focus: words[workout.focus] || workout.focus, exercises: workout.exercises.map((exercise) => ({ ...exercise, instructions: instructions[exercise.instructions] || exercise.instructions })) }));
+}
+
+export function buildPlan(days: number, level: string, goal: string, limitations: string, language = 'hr'): Workout[] {
+  const base: Workout[] = [
+    { id: 'mon', day: 'Monday', title: 'Lower body strength', focus: 'Strength', duration: 55, exercises: [
+      { name: limitations.toLowerCase().includes('knee') ? 'Box squat' : 'Back squat', sets: 4, reps: '6', intensity: level === 'Beginner' ? 'RPE 6' : '72.5% 1RM', rest: '2 min', instructions: 'Brace before each rep. Keep pressure through the whole foot.' },
+      { name: 'Romanian deadlift', sets: 3, reps: '8', intensity: 'RPE 7', rest: '90 sec', instructions: 'Hinge at the hips and keep the load close.' },
+      { name: 'Reverse lunge', sets: 3, reps: '10 / side', intensity: 'Controlled', rest: '60 sec', instructions: 'Use a range that stays pain free.' },
+    ]},
+    { id: 'wed', day: 'Wednesday', title: 'Upper body build', focus: 'Strength', duration: 50, exercises: [
+      { name: 'Dumbbell bench press', sets: 4, reps: '8', intensity: 'RPE 7', rest: '90 sec', instructions: 'Keep shoulder blades gently set throughout.' },
+      { name: 'Single-arm cable row', sets: 3, reps: '10 / side', intensity: 'RPE 7', rest: '60 sec', instructions: 'Lead with the elbow without rotating.' },
+      { name: 'Half-kneeling press', sets: 3, reps: '10 / side', intensity: 'Moderate', rest: '60 sec', instructions: 'Stack ribs over hips and move smoothly.' },
+    ]},
+    { id: 'fri', day: 'Friday', title: goal.toLowerCase().includes('endurance') ? 'Aerobic capacity' : 'Full body power', focus: 'Conditioning', duration: 45, exercises: [
+      { name: 'Kettlebell deadlift', sets: 4, reps: '10', intensity: 'RPE 7', rest: '60 sec', instructions: 'Drive the floor away and finish tall.' },
+      { name: 'Incline push-up', sets: 3, reps: '12', intensity: '2 reps in reserve', rest: '45 sec', instructions: 'Keep a straight line from shoulders to heels.' },
+      { name: 'Bike intervals', sets: 6, reps: '45 sec work', intensity: 'RPE 8', rest: '75 sec easy', duration: '12 min', instructions: 'Keep output repeatable across all intervals.' },
+    ]},
+    { id: 'sat', day: 'Saturday', title: 'Mobility and recovery', focus: 'Recovery', duration: 30, exercises: [
+      { name: 'Zone 2 cardio', sets: 1, reps: '20 min', intensity: 'Conversational', rest: 'None', duration: '20 min', instructions: 'Stay at an easy, sustainable pace.' },
+      { name: 'Mobility flow', sets: 2, reps: '5 movements', intensity: 'Easy', rest: 'As needed', duration: '10 min', instructions: 'Move slowly and avoid pinching or pain.' },
+    ]},
+  ];
+  return localizeWorkouts(base.slice(0, Math.max(2, Math.min(days, 4))), language);
+}
+
+export function seedIfEmpty(): void {
+  const count = db.prepare('SELECT COUNT(*) AS n FROM clients').get() as { n: number };
+  if (count.n > 0) return;
+  const addClient = db.prepare(`INSERT INTO clients
+    (name,email,initials,goal,age,weight,height,fitness_level,condition,limitations,equipment,preferences,days_per_week,status,last_active,language)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const addPlan = db.prepare('INSERT INTO plans (client_id,week_label,status,workouts_json,rationale) VALUES (?,?,?,?,?)');
+  const addSession = db.prepare('INSERT INTO sessions (client_id,title,scheduled_date,status,duration,difficulty,notes,performance_json) VALUES (?,?,?,?,?,?,?,?)');
+  const addProgress = db.prepare('INSERT INTO progress (client_id,recorded_date,weight,waist,body_fat,squat_max,feedback) VALUES (?,?,?,?,?,?,?)');
+  const seed = db.transaction(() => {
+    const clients = [
+      ['Maya Chen','maya@example.com','MC','Build strength and confidence',34,67.4,168,'Intermediate','Good baseline, occasional fatigue','Previous right knee irritation','Full gym, bands','Strength training, cycling',3,'on_track','Today','hr'],
+      ['Jordan Blake','jordan@example.com','JB','Improve endurance for a 10K',29,78.2,181,'Beginner','Returning after a long break','None','Dumbbells, treadmill','Running, circuits',4,'attention','Yesterday','hr'],
+      ['Elena Ruiz','elena@example.com','ER','Body composition and energy',42,71.8,164,'Intermediate','Consistent, sleep varies','Sensitive lower back','Home gym, bands','Pilates, strength',3,'needs_plan','2 days ago','hr'],
+      ['Marcus Lee','marcus@example.com','ML','Athletic performance',25,86.1,187,'Advanced','Strong and well conditioned','Left shoulder overhead discomfort','Full gym','Strength, rowing',4,'missed','4 days ago','hr'],
+    ];
+    const ids = clients.map((c) => Number(addClient.run(...c).lastInsertRowid));
+    ids.forEach((id, i) => addPlan.run(id, 'Aug 10–16', i === 2 ? 'draft' : 'assigned', JSON.stringify(buildPlan(Number(clients[i][12]), String(clients[i][7]), String(clients[i][3]), String(clients[i][9]), String(clients[i][15]))), i === 0 ? 'Volume stays moderate this week while squat load increases by 2.5%. Recovery and completion are both strong.' : 'Balanced around current capacity, preferred training style, and available equipment.'));
+    const sessions = [
+      [ids[0],'Lower body strength','2026-08-10','completed',54,6,'Knee felt good throughout.',JSON.stringify([{exercise:'Back squat',sets:'4 × 6',load:'52.5 kg'},{exercise:'Romanian deadlift',sets:'3 × 8',load:'42.5 kg'}])],
+      [ids[0],'Upper body build','2026-08-12','completed',48,5,'Strong session.',JSON.stringify([{exercise:'Dumbbell bench press',sets:'4 × 8',load:'16 kg'}])],
+      [ids[0],'Full body power','2026-08-14','upcoming',null,null,'','[]'],
+      [ids[1],'Easy run + strides','2026-08-11','completed',38,8,'Pace dropped late.','[]'],
+      [ids[1],'Aerobic intervals','2026-08-13','missed',null,null,'','[]'],
+      [ids[2],'Full body strength','2026-08-12','completed',51,7,'Low back felt tight after rows.','[]'],
+      [ids[3],'Upper strength','2026-08-11','missed',null,null,'','[]'],
+    ];
+    sessions.forEach((s) => addSession.run(...s));
+    [[ids[0],'2026-06-01',70.2,76,25.1,55,'Energy improving'],[ids[0],'2026-07-01',68.8,73,23.9,60,'Sleep has been solid'],[ids[0],'2026-08-10',67.4,71,22.8,67.5,'Feeling strong'],[ids[1],'2026-08-10',78.2,82,20.4,80,'Legs felt heavy']].forEach((p) => addProgress.run(...p));
+  });
+  seed();
+}
+
+export function seedDeliveries(): void {
+  const count = db.prepare('SELECT COUNT(*) AS n FROM plan_deliveries').get() as { n: number };
+  if (count.n > 0) return;
+  const plan = db.prepare('SELECT id, client_id FROM plans WHERE client_id = 1 ORDER BY id DESC LIMIT 1').get() as { id: number; client_id: number } | undefined;
+  if (!plan) return;
+  db.prepare('INSERT INTO plan_deliveries (plan_id, client_id, channel, available_at, status, sent_at, viewed_at, confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(plan.id, plan.client_id, 'in_app', '2026-08-10T08:00:00.000Z', 'viewed', '2026-08-10T08:00:00.000Z', '2026-08-10T09:14:00.000Z', '2026-08-10T09:16:00.000Z');
+}
+
+/** A couple of same-day appointments make the calendar useful on a fresh workspace. */
+export function seedCalendarSessions(): void {
+  const existing = db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE scheduled_date = '2026-08-13' AND title = 'Mobility review'").get() as { n: number };
+  if (existing.n) return;
+  const insert = db.prepare('INSERT INTO sessions (client_id,title,scheduled_date,start_time,training_type,status,duration,difficulty,notes,performance_json,recurrence_rule) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+  const clients = db.prepare('SELECT id FROM clients ORDER BY id').all() as { id: number }[];
+  if (clients.length < 3) return;
+  insert.run(clients[0].id, 'Strength technique', '2026-08-13', '14:00', 'Strength', 'upcoming', 60, null, '', '[]', 'weekly:1,3');
+  insert.run(clients[2].id, 'Mobility review', '2026-08-13', '17:30', 'Recovery', 'upcoming', 45, null, '', '[]', '');
+}
