@@ -4,7 +4,7 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { join } from 'path';
-import { createReadStream, existsSync } from 'fs';
+import { createReadStream, existsSync, readFileSync } from 'fs';
 
 // `bodyLimit` gates only BUFFERED bodies — JSON, urlencoded, plain text (for example a
 // client base64-encoding a file inside a JSON payload). It does NOT cap multipart/form-data
@@ -47,7 +47,10 @@ async function bootstrap() {
       existsSync(indexPath)
     ) {
       reply.code(200).type('text/html');
-      return createReadStream(indexPath);
+      // The deployed server, unlike the preview host, must declare the app root for
+      // HTML returned from a nested client-side route. Keep this transformation on
+      // the server only: the source build remains base-free for previews.
+      return readFileSync(indexPath, 'utf8').replace('<head>', '<head><base href="/">');
     }
     return payload;
   });

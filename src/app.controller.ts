@@ -28,6 +28,11 @@ function releaseScheduledDeliveries(): void {
 
 @Controller('api')
 export class AppController {
+  @Get('health')
+  health() {
+    return { ok: true };
+  }
+
   @Get('state')
   getState() {
     releaseScheduledDeliveries();
