@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 
 const dbPath = process.env.SQLITE_PATH || path.join(process.cwd(), 'data', 'trainer.db');
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -73,7 +74,129 @@ CREATE TABLE IF NOT EXISTS plan_deliveries (
   feedback TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('trainer','client')),
+  client_id INTEGER UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS oauth_states (
+  state_hash TEXT PRIMARY KEY,
+  redirect_uri TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS auth_codes (
+  code_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL
+);
 `);
+
+type Account = { id: number; email: string; display_name: string; role: 'trainer' | 'client'; client_id: number | null; password_hash: string };
+export type AuthUser = Omit<Account, 'password_hash'>;
+
+const hashPassword = (password: string, salt = randomBytes(16).toString('hex')) => `${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
+const verifyPassword = (password: string, stored: string) => {
+  const [salt, expected] = stored.split(':');
+  if (!salt || !expected) return false;
+  const actual = scryptSync(password, salt, 64).toString('hex');
+  return actual.length === expected.length && timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'));
+};
+
+export function seedAccounts(): void {
+  const existing = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
+  if (existing.n) return;
+  const add = db.prepare('INSERT INTO users (email,display_name,role,client_id,password_hash) VALUES (?,?,?,?,?)');
+  const seed = db.transaction(() => {
+    add.run('trainer@letsdoit.app', 'Kiki Obra', 'trainer', null, hashPassword('Trainer2026!'));
+    const clients = db.prepare('SELECT id,name,email FROM clients ORDER BY id').all() as { id: number; name: string; email: string }[];
+    clients.forEach((client) => add.run(client.email || `client${client.id}@letsdoit.app`, client.name, 'client', client.id, hashPassword('Client2026!')));
+  });
+  seed();
+}
+
+export function createClientAccount(client: { id: number; name: string; email: string }): void {
+  if (!client.email) return;
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(client.email);
+  if (!existing) db.prepare('INSERT INTO users (email,display_name,role,client_id,password_hash) VALUES (?,?,?,?,?)').run(client.email, client.name, 'client', client.id, hashPassword('Client2026!'));
+}
+
+export function authenticate(email: string, password: string): AuthUser | null {
+  const account = db.prepare('SELECT * FROM users WHERE email = ?').get(email.trim()) as Account | undefined;
+  if (!account || !verifyPassword(password, account.password_hash)) return null;
+  const { password_hash: _passwordHash, ...user } = account;
+  return user;
+}
+
+export function issueSession(userId: number): string {
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = scryptSync(token, 'letsdoit-session', 64).toString('hex');
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 12).toISOString();
+  db.prepare('DELETE FROM auth_sessions WHERE expires_at <= ?').run(new Date().toISOString());
+  db.prepare('INSERT INTO auth_sessions (token_hash,user_id,expires_at) VALUES (?,?,?)').run(tokenHash, userId, expiresAt);
+  return token;
+}
+
+export function userForToken(token: string): AuthUser | null {
+  if (!token) return null;
+  const hash = scryptSync(token, 'letsdoit-session', 64).toString('hex');
+  const user = db.prepare(`SELECT users.id,users.email,users.display_name,users.role,users.client_id
+    FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
+    WHERE auth_sessions.token_hash = ? AND auth_sessions.expires_at > ?`).get(hash, new Date().toISOString()) as AuthUser | undefined;
+  return user || null;
+}
+
+export function revokeSession(token: string): void {
+  if (!token) return;
+  const hash = scryptSync(token, 'letsdoit-session', 64).toString('hex');
+  db.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').run(hash);
+}
+
+const opaqueHash = (value: string) => scryptSync(value, 'letsdoit-opaque', 64).toString('hex');
+
+export function createOauthState(redirectUri: string): string {
+  const state = randomBytes(32).toString('base64url');
+  const now = new Date().toISOString();
+  db.prepare('DELETE FROM oauth_states WHERE expires_at <= ?').run(now);
+  db.prepare('INSERT INTO oauth_states (state_hash,redirect_uri,expires_at) VALUES (?,?,?)').run(opaqueHash(state), redirectUri, new Date(Date.now() + 1000 * 60 * 10).toISOString());
+  return state;
+}
+
+export function consumeOauthState(state: string): string | null {
+  const hash = opaqueHash(state);
+  const row = db.prepare('SELECT * FROM oauth_states WHERE state_hash = ? AND expires_at > ?').get(hash, new Date().toISOString()) as { redirect_uri: string } | undefined;
+  db.prepare('DELETE FROM oauth_states WHERE state_hash = ?').run(hash);
+  return row?.redirect_uri || null;
+}
+
+export function findUserByEmail(email: string): AuthUser | null {
+  const user = db.prepare('SELECT id,email,display_name,role,client_id FROM users WHERE email = ?').get(email) as AuthUser | undefined;
+  return user || null;
+}
+
+export function createAuthCode(userId: number): string {
+  const code = randomBytes(32).toString('base64url');
+  db.prepare('DELETE FROM auth_codes WHERE expires_at <= ?').run(new Date().toISOString());
+  db.prepare('INSERT INTO auth_codes (code_hash,user_id,expires_at) VALUES (?,?,?)').run(opaqueHash(code), userId, new Date(Date.now() + 1000 * 60).toISOString());
+  return code;
+}
+
+export function consumeAuthCode(code: string): AuthUser | null {
+  const hash = opaqueHash(code);
+  const row = db.prepare('SELECT user_id FROM auth_codes WHERE code_hash = ? AND expires_at > ?').get(hash) as { user_id: number } | undefined;
+  db.prepare('DELETE FROM auth_codes WHERE code_hash = ?').run(hash);
+  if (!row) return null;
+  return db.prepare('SELECT id,email,display_name,role,client_id FROM users WHERE id = ?').get(row.user_id) as AuthUser || null;
+}
 
 // Lightweight migration for workspaces created before client language preference existed.
 const clientColumns = db.prepare("PRAGMA table_info(clients)").all() as { name: string }[];
