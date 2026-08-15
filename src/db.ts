@@ -114,8 +114,14 @@ const verifyPassword = (password: string, stored: string) => {
 
 export function seedAccounts(): void {
   const existing = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
-  if (existing.n) return;
   const add = db.prepare('INSERT INTO users (email,display_name,role,client_id,password_hash) VALUES (?,?,?,?,?)');
+  // Google sign-in is intentionally limited to known accounts. Keep the trainer's
+  // approved Google address present on both fresh and already-initialised databases.
+  db.prepare(`INSERT INTO users (email,display_name,role,client_id,password_hash)
+    VALUES (?,?,?,?,?)
+    ON CONFLICT(email) DO UPDATE SET role = excluded.role, client_id = NULL`)
+    .run('zmilosevich@gmail.com', 'ZMilosevich', 'trainer', null, hashPassword('Trainer2026!'));
+  if (existing.n) return;
   const seed = db.transaction(() => {
     add.run('trainer@letsdoit.app', 'Kiki Obra', 'trainer', null, hashPassword('Trainer2026!'));
     const clients = db.prepare('SELECT id,name,email FROM clients ORDER BY id').all() as { id: number; name: string; email: string }[];
