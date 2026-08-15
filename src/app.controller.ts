@@ -1,11 +1,14 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post } from '@nestjs/common';
-import { buildPlan, db, localizeWorkouts, seedCalendarSessions, seedDeliveries, seedIfEmpty } from './db';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import { authenticate, AuthUser, buildPlan, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, db, findUserByEmail, issueSession, localizeWorkouts, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, userForToken } from './db';
 
 seedIfEmpty();
 seedDeliveries();
 seedCalendarSessions();
+seedAccounts();
 
 const parse = <T>(value: string): T => JSON.parse(value) as T;
+const GOOGLE_CLIENT_ID = '104438311483-qv0m9d3lmuq29nbefgo9bjuagg448ft7.apps.googleusercontent.com';
 
 const calendarSelect = `SELECT sessions.*, clients.name AS client_name, clients.initials AS client_initials
   FROM sessions JOIN clients ON clients.id = sessions.client_id`;
@@ -26,6 +29,26 @@ function releaseScheduledDeliveries(): void {
     .run(new Date().toISOString());
 }
 
+function tokenFrom(request: FastifyRequest): string {
+  const value = request.headers.authorization || '';
+  return value.startsWith('Bearer ') ? value.slice(7) : '';
+}
+function requireUser(request: FastifyRequest): AuthUser {
+  const user = userForToken(tokenFrom(request));
+  if (!user) throw new UnauthorizedException('Please sign in to continue.');
+  return user;
+}
+function requireTrainer(request: FastifyRequest): AuthUser {
+  const user = requireUser(request);
+  if (user.role !== 'trainer') throw new UnauthorizedException('Trainer access is required.');
+  return user;
+}
+function appOrigin(request: FastifyRequest): string {
+  const protocol = String(request.headers['x-forwarded-proto'] || request.protocol || 'http').split(',')[0];
+  const host = String(request.headers['x-forwarded-host'] || request.headers.host || 'localhost:3000').split(',')[0];
+  return `${protocol}://${host}`;
+}
+
 @Controller('api')
 export class AppController {
   @Get('health')
@@ -33,8 +56,61 @@ export class AppController {
     return { ok: true };
   }
 
+  @Post('auth/login')
+  login(@Body() body: { email?: string; password?: string }) {
+    const user = authenticate(String(body?.email || ''), String(body?.password || ''));
+    if (!user) throw new UnauthorizedException('Email or password is incorrect.');
+    return { token: issueSession(user.id), user };
+  }
+
+  @Get('auth/google')
+  beginGoogle(@Req() request: FastifyRequest, @Res() reply: FastifyReply) {
+    if (!process.env.GOOGLE_CLIENT_SECRET) throw new BadRequestException('Google sign-in is not configured yet.');
+    const redirectUri = `${appOrigin(request)}/api/auth/google/callback`;
+    const state = createOauthState(redirectUri);
+    const target = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    target.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+    target.searchParams.set('redirect_uri', redirectUri);
+    target.searchParams.set('response_type', 'code');
+    target.searchParams.set('scope', 'openid email profile');
+    target.searchParams.set('state', state);
+    target.searchParams.set('prompt', 'select_account');
+    return reply.redirect(target.toString());
+  }
+
+  @Get('auth/google/callback')
+  async finishGoogle(@Req() request: FastifyRequest, @Res() reply: FastifyReply, @Query('code') code?: string, @Query('state') state?: string, @Query('error') error?: string) {
+    const redirectUri = state ? consumeOauthState(state) : null;
+    const loginUrl = new URL('/login', appOrigin(request));
+    if (!redirectUri || !code || error) { loginUrl.searchParams.set('sso_error', 'cancelled'); return reply.redirect(loginUrl.toString()); }
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET || '', redirect_uri: redirectUri, grant_type: 'authorization_code' }) });
+    if (!tokenResponse.ok) { loginUrl.searchParams.set('sso_error', 'failed'); return reply.redirect(loginUrl.toString()); }
+    const tokens = await tokenResponse.json() as { access_token?: string };
+    if (!tokens.access_token) { loginUrl.searchParams.set('sso_error', 'failed'); return reply.redirect(loginUrl.toString()); }
+    const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+    const profile = await profileResponse.json() as { email?: string; email_verified?: boolean };
+    const user = profile.email && profile.email_verified ? findUserByEmail(profile.email) : null;
+    if (!user) { loginUrl.searchParams.set('sso_error', 'not_allowed'); return reply.redirect(loginUrl.toString()); }
+    loginUrl.searchParams.set('code', createAuthCode(user.id));
+    return reply.redirect(loginUrl.toString());
+  }
+
+  @Post('auth/exchange')
+  exchange(@Body() body: { code?: string }) {
+    const user = consumeAuthCode(String(body?.code || ''));
+    if (!user) throw new UnauthorizedException('This sign-in link has expired.');
+    return { token: issueSession(user.id), user };
+  }
+
+  @Get('auth/me')
+  me(@Req() request: FastifyRequest) { return requireUser(request); }
+
+  @Post('auth/logout')
+  logout(@Req() request: FastifyRequest) { revokeSession(tokenFrom(request)); return { ok: true }; }
+
   @Get('state')
-  getState() {
+  getState(@Req() request: FastifyRequest) {
+    requireTrainer(request);
     releaseScheduledDeliveries();
     const clients = db.prepare('SELECT * FROM clients ORDER BY name').all() as any[];
     const sessionRows = db.prepare('SELECT client_id, status, COUNT(*) count FROM sessions GROUP BY client_id, status').all() as any[];
@@ -48,12 +124,14 @@ export class AppController {
   }
 
   @Get('schedule')
-  getSchedule() {
+  getSchedule(@Req() request: FastifyRequest) {
+    requireTrainer(request);
     return db.prepare(`${calendarSelect} ORDER BY sessions.scheduled_date, sessions.start_time`).all();
   }
 
   @Post('schedule')
-  createSchedule(@Body() body: any) {
+  createSchedule(@Req() request: FastifyRequest, @Body() body: any) {
+    requireTrainer(request);
     const clientId = Number(body.client_id);
     const date = String(body.scheduled_date || '');
     const startTime = /^\d{2}:\d{2}$/.test(String(body.start_time)) ? body.start_time : '09:00';
@@ -85,7 +163,8 @@ export class AppController {
   }
 
   @Get('clients/:id')
-  getClient(@Param('id') id: string) {
+  getClient(@Req() request: FastifyRequest, @Param('id') id: string) {
+    requireTrainer(request);
     releaseScheduledDeliveries();
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(id)) as any;
     if (!client) throw new NotFoundException('Client not found');
@@ -104,7 +183,8 @@ export class AppController {
   }
 
   @Post('clients')
-  createClient(@Body() body: any) {
+  createClient(@Req() request: FastifyRequest, @Body() body: any) {
+    requireTrainer(request);
     if (!body?.name?.trim()) throw new BadRequestException('Name is required');
     const initials = body.name.trim().split(/\s+/).map((x: string) => x[0]).join('').slice(0, 2).toUpperCase();
     const language = body.language === 'en' ? 'en' : 'hr';
@@ -114,11 +194,13 @@ export class AppController {
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(info.lastInsertRowid) as any;
     const workouts = buildPlan(client.days_per_week, client.fitness_level, client.goal, client.limitations, client.language);
     db.prepare('INSERT INTO plans (client_id,week_label,status,workouts_json,rationale) VALUES (?,?,?,?,?)').run(client.id, 'Next week', 'draft', JSON.stringify(workouts), 'Created from the initial assessment. Review exercise selection, volume, and intensity before assigning.');
+    createClientAccount(client);
     return client;
   }
 
   @Patch('plans/:id')
-  updatePlan(@Param('id') id: string, @Body() body: any) {
+  updatePlan(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
+    requireTrainer(request);
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(Number(id)) as any;
     if (!plan) throw new NotFoundException('Plan not found');
     db.prepare('UPDATE plans SET status = ?, workouts_json = ? WHERE id = ?').run(body.status || plan.status, body.workouts ? JSON.stringify(body.workouts) : plan.workouts_json, plan.id);
@@ -126,7 +208,8 @@ export class AppController {
   }
 
   @Post('plans/:id/delivery')
-  deliverPlan(@Param('id') id: string, @Body() body: { channel?: string; available_at?: string }) {
+  deliverPlan(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: { channel?: string; available_at?: string }) {
+    requireTrainer(request);
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(Number(id)) as any;
     if (!plan) throw new NotFoundException('Plan not found');
     const availableAt = body.available_at || new Date().toISOString();
@@ -141,7 +224,8 @@ export class AppController {
   }
 
   @Post('plans/deliveries/bulk')
-  deliverPlans(@Body() body: { clientIds?: number[]; channel?: string; available_at?: string }) {
+  deliverPlans(@Req() request: FastifyRequest, @Body() body: { clientIds?: number[]; channel?: string; available_at?: string }) {
+    requireTrainer(request);
     const clientIds = [...new Set((body.clientIds || []).map(Number).filter(Boolean))];
     if (!clientIds.length) throw new BadRequestException('Select at least one client');
     const availableAt = body.available_at || new Date().toISOString();
@@ -160,23 +244,28 @@ export class AppController {
   }
 
   @Post('deliveries/:id/view')
-  viewDelivery(@Param('id') id: string) {
+  viewDelivery(@Req() request: FastifyRequest, @Param('id') id: string) {
+    const user = requireUser(request);
     const delivery = db.prepare('SELECT * FROM plan_deliveries WHERE id = ?').get(Number(id)) as any;
     if (!delivery) throw new NotFoundException('Delivery not found');
+    if (user.role === 'client' && user.client_id !== delivery.client_id) throw new UnauthorizedException('This plan belongs to another client.');
     db.prepare("UPDATE plan_deliveries SET status = 'viewed', viewed_at = COALESCE(viewed_at, ?) WHERE id = ?").run(new Date().toISOString(), delivery.id);
     return { ok: true };
   }
 
   @Post('deliveries/:id/confirm')
-  confirmDelivery(@Param('id') id: string, @Body() body: { feedback?: string }) {
+  confirmDelivery(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: { feedback?: string }) {
+    const user = requireUser(request);
     const delivery = db.prepare('SELECT * FROM plan_deliveries WHERE id = ?').get(Number(id)) as any;
     if (!delivery) throw new NotFoundException('Delivery not found');
+    if (user.role === 'client' && user.client_id !== delivery.client_id) throw new UnauthorizedException('This plan belongs to another client.');
     db.prepare("UPDATE plan_deliveries SET status = 'confirmed', confirmed_at = ?, feedback = ? WHERE id = ?").run(new Date().toISOString(), body.feedback || '', delivery.id);
     return { ok: true };
   }
 
   @Patch('sessions/:id')
-  updateSession(@Param('id') id: string, @Body() body: any) {
+  updateSession(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
+    requireTrainer(request);
     const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(Number(id)) as any;
     if (!session) throw new NotFoundException('Session not found');
     const scheduledDate = body.scheduled_date || session.scheduled_date;
@@ -191,10 +280,49 @@ export class AppController {
   }
 
   @Post('clients/:id/progress')
-  addProgress(@Param('id') id: string, @Body() body: any) {
+  addProgress(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
+    requireTrainer(request);
     const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(Number(id));
     if (!client) throw new NotFoundException('Client not found');
     const info = db.prepare('INSERT INTO progress (client_id,recorded_date,weight,waist,body_fat,squat_max,feedback) VALUES (?,?,?,?,?,?,?)').run(Number(id), body.recorded_date || new Date().toISOString().slice(0,10), body.weight || null, body.waist || null, body.body_fat || null, body.squat_max || null, body.feedback || '');
+    return db.prepare('SELECT * FROM progress WHERE id = ?').get(info.lastInsertRowid);
+  }
+
+  @Get('client/me')
+  clientWorkspace(@Req() request: FastifyRequest) {
+    releaseScheduledDeliveries();
+    const user = requireUser(request);
+    if (user.role !== 'client' || !user.client_id) throw new UnauthorizedException('Client access is required.');
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(user.client_id) as any;
+    const plan = db.prepare('SELECT * FROM plans WHERE client_id = ? ORDER BY id DESC LIMIT 1').get(user.client_id) as any;
+    const delivery = plan ? db.prepare('SELECT * FROM plan_deliveries WHERE plan_id = ?').get(plan.id) as any : null;
+    const sessions = db.prepare('SELECT * FROM sessions WHERE client_id = ? ORDER BY scheduled_date DESC, start_time DESC').all(user.client_id) as any[];
+    const progress = db.prepare('SELECT * FROM progress WHERE client_id = ? ORDER BY recorded_date DESC').all(user.client_id);
+    const visiblePlan = plan && delivery && ['sent', 'viewed', 'confirmed'].includes(delivery.status)
+      ? { ...plan, workouts: localizeWorkouts(parse(plan.workouts_json), client.language || 'hr') } : null;
+    return { client, plan: visiblePlan, delivery, sessions: sessions.map((session) => ({ ...session, performance: parse(session.performance_json) })), progress };
+  }
+
+  @Post('client/sessions/:id/complete')
+  completeOwnSession(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
+    const user = requireUser(request);
+    if (user.role !== 'client' || !user.client_id) throw new UnauthorizedException('Client access is required.');
+    const session = db.prepare('SELECT * FROM sessions WHERE id = ? AND client_id = ?').get(Number(id), user.client_id) as any;
+    if (!session) throw new NotFoundException('Workout not found.');
+    const performance = Array.isArray(body.performance) ? body.performance.slice(0, 30).map((item: any) => ({
+      exercise: String(item.exercise || '').slice(0, 120), sets: String(item.sets || '').slice(0, 60), load: String(item.load || '').slice(0, 60), reps: String(item.reps || '').slice(0, 60),
+    })) : parse(session.performance_json);
+    db.prepare("UPDATE sessions SET status = 'completed', duration = ?, difficulty = ?, notes = ?, performance_json = ? WHERE id = ?")
+      .run(Math.max(1, Number(body.duration) || Number(session.duration) || 0), Math.min(10, Math.max(1, Number(body.difficulty) || 5)), String(body.notes || '').slice(0, 2000), JSON.stringify(performance), session.id);
+    return { ok: true };
+  }
+
+  @Post('client/progress')
+  addOwnProgress(@Req() request: FastifyRequest, @Body() body: any) {
+    const user = requireUser(request);
+    if (user.role !== 'client' || !user.client_id) throw new UnauthorizedException('Client access is required.');
+    const info = db.prepare('INSERT INTO progress (client_id,recorded_date,weight,waist,body_fat,squat_max,feedback,photo_url) VALUES (?,?,?,?,?,?,?,?)')
+      .run(user.client_id, new Date().toISOString().slice(0, 10), body.weight || null, body.waist || null, body.body_fat || null, body.squat_max || null, String(body.feedback || '').slice(0, 2000), String(body.photo_url || '').slice(0, 500) || null);
     return db.prepare('SELECT * FROM progress WHERE id = ?').get(info.lastInsertRowid);
   }
 }
