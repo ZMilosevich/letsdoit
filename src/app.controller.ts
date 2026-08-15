@@ -75,24 +75,24 @@ export class AppController {
     target.searchParams.set('scope', 'openid email profile');
     target.searchParams.set('state', state);
     target.searchParams.set('prompt', 'select_account');
-    return reply.redirect(target.toString());
+    return reply.code(302).redirect(target.toString());
   }
 
   @Get('auth/google/callback')
   async finishGoogle(@Req() request: FastifyRequest, @Res() reply: FastifyReply, @Query('code') code?: string, @Query('state') state?: string, @Query('error') error?: string) {
     const redirectUri = state ? consumeOauthState(state) : null;
     const loginUrl = new URL('/login', appOrigin(request));
-    if (!redirectUri || !code || error) { loginUrl.searchParams.set('sso_error', 'cancelled'); return reply.redirect(loginUrl.toString()); }
+    if (!redirectUri || !code || error) { loginUrl.searchParams.set('sso_error', 'cancelled'); return reply.code(302).redirect(loginUrl.toString()); }
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET || '', redirect_uri: redirectUri, grant_type: 'authorization_code' }) });
-    if (!tokenResponse.ok) { loginUrl.searchParams.set('sso_error', 'failed'); return reply.redirect(loginUrl.toString()); }
+    if (!tokenResponse.ok) { loginUrl.searchParams.set('sso_error', 'failed'); return reply.code(302).redirect(loginUrl.toString()); }
     const tokens = await tokenResponse.json() as { access_token?: string };
-    if (!tokens.access_token) { loginUrl.searchParams.set('sso_error', 'failed'); return reply.redirect(loginUrl.toString()); }
+    if (!tokens.access_token) { loginUrl.searchParams.set('sso_error', 'failed'); return reply.code(302).redirect(loginUrl.toString()); }
     const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
     const profile = await profileResponse.json() as { email?: string; email_verified?: boolean };
     const user = profile.email && profile.email_verified ? findUserByEmail(profile.email) : null;
-    if (!user) { loginUrl.searchParams.set('sso_error', 'not_allowed'); return reply.redirect(loginUrl.toString()); }
+    if (!user) { loginUrl.searchParams.set('sso_error', 'not_allowed'); return reply.code(302).redirect(loginUrl.toString()); }
     loginUrl.searchParams.set('code', createAuthCode(user.id));
-    return reply.redirect(loginUrl.toString());
+    return reply.code(302).redirect(loginUrl.toString());
   }
 
   @Post('auth/exchange')
