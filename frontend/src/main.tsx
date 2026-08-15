@@ -6,6 +6,16 @@ import './styles.css';
 import './calendar-fixes.css';
 import { LanguageProvider } from './lib/i18n';
 
+const originalFetch = window.fetch.bind(window);
+window.fetch = ((input: RequestInfo | URL, init: RequestInit = {}) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  const token = localStorage.getItem('letsdoit-session');
+  if (!token || !url.includes('/api/')) return originalFetch(input, init);
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  return originalFetch(input, { ...init, headers });
+}) as typeof window.fetch;
+
 const baseEl = document.querySelector('base');
 const basename = baseEl ? new URL(baseEl.href).pathname.replace(/\/$/, '') : '';
 
