@@ -53,7 +53,7 @@ function appOrigin(request: FastifyRequest): string {
 export class AppController {
   @Get('health')
   health() {
-    return { ok: true };
+    return { ok: true, release: 'google-trainer-access' };
   }
 
   @Post('auth/login')
