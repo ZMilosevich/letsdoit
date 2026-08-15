@@ -8,7 +8,7 @@ seedCalendarSessions();
 seedAccounts();
 
 const parse = <T>(value: string): T => JSON.parse(value) as T;
-const GOOGLE_CLIENT_ID = '104438311483-i8dqlms8i05ojf15mjh2o33gk6chtm39.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '104438311483-qv0m9d3lmuq29nbefgo9bjuagg448ft7.apps.googleusercontent.com';
 
 const calendarSelect = `SELECT sessions.*, clients.name AS client_name, clients.initials AS client_initials
   FROM sessions JOIN clients ON clients.id = sessions.client_id`;
