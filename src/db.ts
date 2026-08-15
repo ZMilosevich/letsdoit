@@ -78,9 +78,12 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   display_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('trainer','client')),
+  role TEXT NOT NULL CHECK(role IN ('admin','trainer','client')),
   client_id INTEGER UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
   password_hash TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  last_login TEXT,
+  password_reset_required INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -101,8 +104,45 @@ CREATE TABLE IF NOT EXISTS auth_codes (
 );
 `);
 
-type Account = { id: number; email: string; display_name: string; role: 'trainer' | 'client'; client_id: number | null; password_hash: string };
-export type AuthUser = Omit<Account, 'password_hash'>;
+// Existing installations used a two-role CHECK constraint. SQLite cannot alter it in place,
+// so migrate the account table while preserving ids referenced by sessions and auth codes.
+const usersSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as { sql?: string } | undefined)?.sql || '';
+if (!usersSql.includes("'admin'")) {
+  db.pragma('foreign_keys = OFF');
+  db.exec(`
+    BEGIN;
+    CREATE TABLE users_next (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin','trainer','client')),
+      client_id INTEGER UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
+      password_hash TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      last_login TEXT,
+      password_reset_required INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO users_next (id,email,display_name,role,client_id,password_hash,created_at)
+      SELECT id,email,display_name,role,client_id,password_hash,created_at FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_next RENAME TO users;
+    COMMIT;
+  `);
+  db.pragma('foreign_keys = ON');
+}
+const userColumns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+if (!userColumns.some((column) => column.name === 'active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+if (!userColumns.some((column) => column.name === 'last_login')) db.exec('ALTER TABLE users ADD COLUMN last_login TEXT');
+if (!userColumns.some((column) => column.name === 'password_reset_required')) db.exec('ALTER TABLE users ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0');
+
+const initialClientColumns = db.prepare("PRAGMA table_info(clients)").all() as { name: string }[];
+if (!initialClientColumns.some((column) => column.name === 'trainer_id')) db.exec('ALTER TABLE clients ADD COLUMN trainer_id INTEGER');
+const authSessionColumns = db.prepare("PRAGMA table_info(auth_sessions)").all() as { name: string }[];
+if (!authSessionColumns.some((column) => column.name === 'is_preview')) db.exec('ALTER TABLE auth_sessions ADD COLUMN is_preview INTEGER NOT NULL DEFAULT 0');
+
+type Account = { id: number; email: string; display_name: string; role: 'admin' | 'trainer' | 'client'; client_id: number | null; password_hash: string; active: number; last_login: string | null; password_reset_required: number };
+export type AuthUser = Omit<Account, 'password_hash'> & { is_preview?: number };
 
 const hashPassword = (password: string, salt = randomBytes(16).toString('hex')) => `${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
 const verifyPassword = (password: string, stored: string) => {
@@ -115,19 +155,21 @@ const verifyPassword = (password: string, stored: string) => {
 export function seedAccounts(): void {
   const existing = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
   const add = db.prepare('INSERT INTO users (email,display_name,role,client_id,password_hash) VALUES (?,?,?,?,?)');
-  // Google sign-in is intentionally limited to known accounts. Keep the trainer's
-  // approved Google address present on both fresh and already-initialised databases.
+  // Keep the initial administrator present on fresh and existing installations.
   db.prepare(`INSERT INTO users (email,display_name,role,client_id,password_hash)
     VALUES (?,?,?,?,?)
-    ON CONFLICT(email) DO UPDATE SET role = excluded.role, client_id = NULL`)
-    .run('zmilosevich@gmail.com', 'ZMilosevich', 'trainer', null, hashPassword('Trainer2026!'));
-  if (existing.n) return;
-  const seed = db.transaction(() => {
-    add.run('trainer@letsdoit.app', 'Kiki Obra', 'trainer', null, hashPassword('Trainer2026!'));
-    const clients = db.prepare('SELECT id,name,email FROM clients ORDER BY id').all() as { id: number; name: string; email: string }[];
-    clients.forEach((client) => add.run(client.email || `client${client.id}@letsdoit.app`, client.name, 'client', client.id, hashPassword('Client2026!')));
-  });
-  seed();
+    ON CONFLICT(email) DO UPDATE SET role = excluded.role, client_id = NULL, active = 1`)
+    .run('zmilosevich@gmail.com', 'ZMilosevich', 'admin', null, hashPassword('Trainer2026!'));
+  if (!existing.n) {
+    const seed = db.transaction(() => {
+      add.run('trainer@letsdoit.app', 'Kiki Obra', 'trainer', null, hashPassword('Trainer2026!'));
+      const clients = db.prepare('SELECT id,name,email FROM clients ORDER BY id').all() as { id: number; name: string; email: string }[];
+      clients.forEach((client) => add.run(client.email || `client${client.id}@letsdoit.app`, client.name, 'client', client.id, hashPassword('Client2026!')));
+    });
+    seed();
+  }
+  const defaultTrainer = db.prepare("SELECT id FROM users WHERE role='trainer' AND active=1 ORDER BY id LIMIT 1").get() as { id: number } | undefined;
+  if (defaultTrainer) db.prepare('UPDATE clients SET trainer_id=? WHERE trainer_id IS NULL').run(defaultTrainer.id);
 }
 
 export function createClientAccount(client: { id: number; name: string; email: string }): void {
@@ -138,26 +180,27 @@ export function createClientAccount(client: { id: number; name: string; email: s
 
 export function authenticate(email: string, password: string): AuthUser | null {
   const account = db.prepare('SELECT * FROM users WHERE email = ?').get(email.trim()) as Account | undefined;
-  if (!account || !verifyPassword(password, account.password_hash)) return null;
+  if (!account || !account.active || !verifyPassword(password, account.password_hash)) return null;
   const { password_hash: _passwordHash, ...user } = account;
   return user;
 }
 
-export function issueSession(userId: number): string {
+export function issueSession(userId: number, recordLogin = true, isPreview = false): string {
   const token = randomBytes(32).toString('base64url');
   const tokenHash = scryptSync(token, 'letsdoit-session', 64).toString('hex');
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 12).toISOString();
   db.prepare('DELETE FROM auth_sessions WHERE expires_at <= ?').run(new Date().toISOString());
-  db.prepare('INSERT INTO auth_sessions (token_hash,user_id,expires_at) VALUES (?,?,?)').run(tokenHash, userId, expiresAt);
+  db.prepare('INSERT INTO auth_sessions (token_hash,user_id,expires_at,is_preview) VALUES (?,?,?,?)').run(tokenHash, userId, expiresAt, isPreview ? 1 : 0);
+  if (recordLogin) db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(new Date().toISOString(), userId);
   return token;
 }
 
 export function userForToken(token: string): AuthUser | null {
   if (!token) return null;
   const hash = scryptSync(token, 'letsdoit-session', 64).toString('hex');
-  const user = db.prepare(`SELECT users.id,users.email,users.display_name,users.role,users.client_id
+  const user = db.prepare(`SELECT users.id,users.email,users.display_name,users.role,users.client_id,users.active,users.last_login,users.password_reset_required,auth_sessions.is_preview
     FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
-    WHERE auth_sessions.token_hash = ? AND auth_sessions.expires_at > ?`).get(hash, new Date().toISOString()) as AuthUser | undefined;
+    WHERE auth_sessions.token_hash = ? AND auth_sessions.expires_at > ? AND users.active = 1`).get(hash, new Date().toISOString()) as AuthUser | undefined;
   return user || null;
 }
 
@@ -185,7 +228,7 @@ export function consumeOauthState(state: string): string | null {
 }
 
 export function findUserByEmail(email: string): AuthUser | null {
-  const user = db.prepare('SELECT id,email,display_name,role,client_id FROM users WHERE email = ?').get(email) as AuthUser | undefined;
+  const user = db.prepare('SELECT id,email,display_name,role,client_id,active,last_login,password_reset_required FROM users WHERE email = ? AND active = 1').get(email) as AuthUser | undefined;
   return user || null;
 }
 
@@ -201,7 +244,16 @@ export function consumeAuthCode(code: string): AuthUser | null {
   const row = db.prepare('SELECT user_id FROM auth_codes WHERE code_hash = ? AND expires_at > ?').get(hash) as { user_id: number } | undefined;
   db.prepare('DELETE FROM auth_codes WHERE code_hash = ?').run(hash);
   if (!row) return null;
-  return db.prepare('SELECT id,email,display_name,role,client_id FROM users WHERE id = ?').get(row.user_id) as AuthUser || null;
+  return db.prepare('SELECT id,email,display_name,role,client_id,active,last_login,password_reset_required FROM users WHERE id = ? AND active = 1').get(row.user_id) as AuthUser || null;
+}
+
+export function createPassword(): string {
+  return `${randomBytes(5).toString('base64url')}!7a`;
+}
+
+export function setAccountPassword(userId: number, password: string, requireReset = true): void {
+  db.prepare('UPDATE users SET password_hash = ?, password_reset_required = ? WHERE id = ?').run(hashPassword(password), requireReset ? 1 : 0, userId);
+  db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(userId);
 }
 
 // Lightweight migration for workspaces created before client language preference existed.

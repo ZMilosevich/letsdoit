@@ -1,6 +1,6 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { authenticate, AuthUser, buildPlan, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, db, findUserByEmail, issueSession, localizeWorkouts, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, userForToken } from './db';
+import { authenticate, AuthUser, buildPlan, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, createPassword, db, findUserByEmail, issueSession, localizeWorkouts, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, setAccountPassword, userForToken } from './db';
 
 seedIfEmpty();
 seedDeliveries();
@@ -40,8 +40,18 @@ function requireUser(request: FastifyRequest): AuthUser {
 }
 function requireTrainer(request: FastifyRequest): AuthUser {
   const user = requireUser(request);
-  if (user.role !== 'trainer') throw new UnauthorizedException('Trainer access is required.');
+  if (!['admin', 'trainer'].includes(user.role)) throw new UnauthorizedException('Trainer access is required.');
   return user;
+}
+function requireAdmin(request: FastifyRequest): AuthUser {
+  const user = requireUser(request);
+  if (user.role !== 'admin') throw new UnauthorizedException('Administrator access is required.');
+  return user;
+}
+function requireClientAccess(user: AuthUser, clientId: number): void {
+  if (user.role === 'admin') return;
+  const client = db.prepare('SELECT trainer_id FROM clients WHERE id = ?').get(clientId) as { trainer_id: number | null } | undefined;
+  if (!client || client.trainer_id !== user.id) throw new UnauthorizedException('This client is not assigned to you.');
 }
 function appOrigin(request: FastifyRequest): string {
   const protocol = String(request.headers['x-forwarded-proto'] || request.protocol || 'http').split(',')[0];
@@ -108,30 +118,135 @@ export class AppController {
   @Post('auth/logout')
   logout(@Req() request: FastifyRequest) { revokeSession(tokenFrom(request)); return { ok: true }; }
 
+  @Post('auth/change-password')
+  changePassword(@Req() request: FastifyRequest, @Body() body: { new_password?: string }) {
+    const user = requireUser(request);
+    const password = String(body.new_password || '');
+    if (password.length < 10) throw new BadRequestException('Use at least 10 characters.');
+    setAccountPassword(user.id, password, false);
+    return { token: issueSession(user.id, false), user: { ...user, password_reset_required: 0 } };
+  }
+
+  @Get('admin/overview')
+  adminOverview(@Req() request: FastifyRequest) {
+    requireAdmin(request);
+    const trainers = db.prepare(`SELECT users.id,users.email,users.display_name,users.active,users.last_login,users.created_at,
+      COUNT(clients.id) AS client_count FROM users LEFT JOIN clients ON clients.trainer_id = users.id
+      WHERE users.role = 'trainer' GROUP BY users.id ORDER BY users.display_name`).all();
+    const clients = db.prepare(`SELECT users.id,users.email,users.display_name,users.active,users.last_login,users.created_at,users.client_id,
+      clients.status,clients.trainer_id,trainers.display_name AS trainer_name
+      FROM users JOIN clients ON clients.id = users.client_id
+      LEFT JOIN users trainers ON trainers.id = clients.trainer_id
+      WHERE users.role = 'client' ORDER BY users.display_name`).all();
+    const stats = db.prepare(`SELECT
+      (SELECT COUNT(*) FROM users WHERE role='trainer') AS trainers,
+      (SELECT COUNT(*) FROM users WHERE role='client') AS clients,
+      (SELECT COUNT(*) FROM users WHERE role='client' AND active=1) AS active_clients,
+      (SELECT COUNT(*) FROM sessions WHERE status='upcoming' AND scheduled_date >= date('now')) AS scheduled_sessions`).get();
+    return { trainers, clients, stats };
+  }
+
+  @Post('admin/users')
+  createManagedUser(@Req() request: FastifyRequest, @Body() body: any) {
+    requireAdmin(request);
+    const role = body.role === 'client' ? 'client' : body.role === 'trainer' ? 'trainer' : null;
+    const email = String(body.email || '').trim().toLowerCase();
+    const name = String(body.display_name || '').trim();
+    if (!role || !name || !/^\S+@\S+\.\S+$/.test(email)) throw new BadRequestException('Name, email, and a valid role are required.');
+    if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) throw new BadRequestException('An account with this email already exists.');
+    const temporaryPassword = createPassword();
+    const create = db.transaction(() => {
+      let clientId: number | null = null;
+      if (role === 'client') {
+        const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+        const info = db.prepare(`INSERT INTO clients (name,email,initials,goal,age,weight,height,fitness_level,condition,limitations,equipment,preferences,days_per_week,status,last_active,language,trainer_id)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'needs_plan','Never',?,?)`).run(name,email,initials,'Build general fitness',30,70,170,'Beginner','Ready to begin','None','Bodyweight','Strength training',3,body.language === 'en' ? 'en' : 'hr',Number(body.trainer_id) || null);
+        clientId = Number(info.lastInsertRowid);
+      }
+      const info = db.prepare('INSERT INTO users (email,display_name,role,client_id,password_hash,password_reset_required) VALUES (?,?,?,?,?,1)').run(email,name,role,clientId,'pending');
+      setAccountPassword(Number(info.lastInsertRowid), temporaryPassword, true);
+      return Number(info.lastInsertRowid);
+    });
+    return { id: create(), temporaryPassword };
+  }
+
+  @Patch('admin/users/:id')
+  updateManagedUser(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
+    requireAdmin(request);
+    const userId = Number(id);
+    const account = db.prepare("SELECT * FROM users WHERE id = ? AND role IN ('trainer','client')").get(userId) as any;
+    if (!account) throw new NotFoundException('Account not found.');
+    const email = String(body.email ?? account.email).trim().toLowerCase();
+    const name = String(body.display_name ?? account.display_name).trim();
+    if (!name || !/^\S+@\S+\.\S+$/.test(email)) throw new BadRequestException('A valid name and email are required.');
+    const active = body.active === undefined ? account.active : body.active ? 1 : 0;
+    const update = db.transaction(() => {
+      db.prepare('UPDATE users SET email=?,display_name=?,active=? WHERE id=?').run(email,name,active,userId);
+      if (account.role === 'client' && account.client_id) db.prepare('UPDATE clients SET name=?,email=?,trainer_id=? WHERE id=?').run(name,email,Number(body.trainer_id) || null,account.client_id);
+      if (!active) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(userId);
+    });
+    update();
+    return { ok: true };
+  }
+
+  @Post('admin/users/:id/reset-password')
+  resetManagedPassword(@Req() request: FastifyRequest, @Param('id') id: string) {
+    requireAdmin(request);
+    const userId = Number(id);
+    const account = db.prepare("SELECT id FROM users WHERE id=? AND role IN ('trainer','client')").get(userId);
+    if (!account) throw new NotFoundException('Account not found.');
+    const temporaryPassword = createPassword();
+    setAccountPassword(userId, temporaryPassword, true);
+    return { temporaryPassword };
+  }
+
+  @Post('admin/users/:id/preview')
+  previewManagedUser(@Req() request: FastifyRequest, @Param('id') id: string) {
+    requireAdmin(request);
+    const account = db.prepare("SELECT id,role FROM users WHERE id=? AND role IN ('trainer','client') AND active=1").get(Number(id)) as { id: number; role: string } | undefined;
+    if (!account) throw new NotFoundException('Active account not found.');
+    return { token: issueSession(account.id, false, true), role: account.role };
+  }
+
+  @Delete('admin/users/:id')
+  deleteManagedUser(@Req() request: FastifyRequest, @Param('id') id: string) {
+    requireAdmin(request);
+    const userId = Number(id);
+    const account = db.prepare("SELECT * FROM users WHERE id=? AND role IN ('trainer','client')").get(userId) as any;
+    if (!account) throw new NotFoundException('Account not found.');
+    const remove = db.transaction(() => {
+      if (account.role === 'trainer') db.prepare('UPDATE clients SET trainer_id=NULL WHERE trainer_id=?').run(userId);
+      db.prepare('DELETE FROM users WHERE id=?').run(userId);
+      if (account.role === 'client' && account.client_id) db.prepare('DELETE FROM clients WHERE id=?').run(account.client_id);
+    });
+    remove();
+    return { ok: true };
+  }
+
   @Get('state')
   getState(@Req() request: FastifyRequest) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     releaseScheduledDeliveries();
-    const clients = db.prepare('SELECT * FROM clients ORDER BY name').all() as any[];
+    const clients = (user.role === 'admin' ? db.prepare('SELECT * FROM clients ORDER BY name').all() : db.prepare('SELECT * FROM clients WHERE trainer_id=? ORDER BY name').all(user.id)) as any[];
     const sessionRows = db.prepare('SELECT client_id, status, COUNT(*) count FROM sessions GROUP BY client_id, status').all() as any[];
     const summaries = new Map<number, Record<string, number>>();
     sessionRows.forEach((row) => summaries.set(row.client_id, { ...(summaries.get(row.client_id) || {}), [row.status]: row.count }));
     const plans = db.prepare('SELECT id, client_id, status, week_label FROM plans WHERE id IN (SELECT MAX(id) FROM plans GROUP BY client_id)').all() as any[];
     const deliveries = db.prepare('SELECT client_id, plan_id, status, available_at, viewed_at, confirmed_at FROM plan_deliveries').all() as any[];
     const today = new Date().toISOString().slice(0, 10);
-    const todaySchedule = db.prepare(`${calendarSelect} WHERE sessions.scheduled_date = ? ORDER BY sessions.start_time`).all(today);
+    const todaySchedule = user.role === 'admin' ? db.prepare(`${calendarSelect} WHERE sessions.scheduled_date = ? ORDER BY sessions.start_time`).all(today) : db.prepare(`${calendarSelect} WHERE sessions.scheduled_date = ? AND clients.trainer_id=? ORDER BY sessions.start_time`).all(today,user.id);
     return { clients: clients.map((client) => ({ ...client, sessions: summaries.get(client.id) || {}, plan: plans.find((plan) => plan.client_id === client.id) || null, delivery: deliveries.find((delivery) => delivery.client_id === client.id) || null })), todaySchedule };
   }
 
   @Get('schedule')
   getSchedule(@Req() request: FastifyRequest) {
-    requireTrainer(request);
-    return db.prepare(`${calendarSelect} ORDER BY sessions.scheduled_date, sessions.start_time`).all();
+    const user = requireTrainer(request);
+    return user.role === 'admin' ? db.prepare(`${calendarSelect} ORDER BY sessions.scheduled_date, sessions.start_time`).all() : db.prepare(`${calendarSelect} WHERE clients.trainer_id=? ORDER BY sessions.scheduled_date, sessions.start_time`).all(user.id);
   }
 
   @Post('schedule')
   createSchedule(@Req() request: FastifyRequest, @Body() body: any) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     const clientId = Number(body.client_id);
     const date = String(body.scheduled_date || '');
     const startTime = /^\d{2}:\d{2}$/.test(String(body.start_time)) ? body.start_time : '09:00';
@@ -139,6 +254,7 @@ export class AppController {
     if (!clientId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !body.title?.trim()) throw new BadRequestException('Please complete the client, session name, date, and time.');
     const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(clientId);
     if (!client) throw new NotFoundException('Client not found');
+    requireClientAccess(user, clientId);
     const overlap = sessionOverlap(clientId, date, startTime, duration);
     if (overlap) throw new BadRequestException(`This overlaps with ${overlap.title} at ${overlap.start_time}.`);
     const status = ['upcoming', 'completed', 'cancelled'].includes(body.status) ? body.status : 'upcoming';
@@ -164,10 +280,11 @@ export class AppController {
 
   @Get('clients/:id')
   getClient(@Req() request: FastifyRequest, @Param('id') id: string) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     releaseScheduledDeliveries();
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(id)) as any;
     if (!client) throw new NotFoundException('Client not found');
+    requireClientAccess(user, client.id);
     const plan = db.prepare('SELECT * FROM plans WHERE client_id = ? ORDER BY id DESC LIMIT 1').get(client.id) as any;
     const delivery = plan ? db.prepare('SELECT * FROM plan_deliveries WHERE plan_id = ?').get(plan.id) as any : null;
     const sessions = db.prepare('SELECT * FROM sessions WHERE client_id = ? ORDER BY scheduled_date DESC').all(client.id) as any[];
@@ -184,12 +301,12 @@ export class AppController {
 
   @Post('clients')
   createClient(@Req() request: FastifyRequest, @Body() body: any) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     if (!body?.name?.trim()) throw new BadRequestException('Name is required');
     const initials = body.name.trim().split(/\s+/).map((x: string) => x[0]).join('').slice(0, 2).toUpperCase();
     const language = body.language === 'en' ? 'en' : 'hr';
-    const info = db.prepare(`INSERT INTO clients (name,email,initials,goal,age,weight,height,fitness_level,condition,limitations,equipment,preferences,days_per_week,status,last_active,language) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'needs_plan','Just now',?)`).run(
-      body.name.trim(), body.email || '', initials, body.goal || 'Build general fitness', Number(body.age) || 30, Number(body.weight) || 70, Number(body.height) || 170, body.fitness_level || 'Beginner', body.condition || 'Ready to begin', body.limitations || 'None', body.equipment || 'Bodyweight', body.preferences || 'Strength training', Number(body.days_per_week) || 3, language,
+    const info = db.prepare(`INSERT INTO clients (name,email,initials,goal,age,weight,height,fitness_level,condition,limitations,equipment,preferences,days_per_week,status,last_active,language,trainer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'needs_plan','Just now',?,?)`).run(
+      body.name.trim(), body.email || '', initials, body.goal || 'Build general fitness', Number(body.age) || 30, Number(body.weight) || 70, Number(body.height) || 170, body.fitness_level || 'Beginner', body.condition || 'Ready to begin', body.limitations || 'None', body.equipment || 'Bodyweight', body.preferences || 'Strength training', Number(body.days_per_week) || 3, language, user.role === 'admin' ? Number(body.trainer_id) || null : user.id,
     );
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(info.lastInsertRowid) as any;
     const workouts = buildPlan(client.days_per_week, client.fitness_level, client.goal, client.limitations, client.language);
@@ -200,18 +317,20 @@ export class AppController {
 
   @Patch('plans/:id')
   updatePlan(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(Number(id)) as any;
     if (!plan) throw new NotFoundException('Plan not found');
+    requireClientAccess(user, plan.client_id);
     db.prepare('UPDATE plans SET status = ?, workouts_json = ? WHERE id = ?').run(body.status || plan.status, body.workouts ? JSON.stringify(body.workouts) : plan.workouts_json, plan.id);
     return { ...plan, status: body.status || plan.status, workouts: body.workouts || parse(plan.workouts_json) };
   }
 
   @Post('plans/:id/delivery')
   deliverPlan(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: { channel?: string; available_at?: string }) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(Number(id)) as any;
     if (!plan) throw new NotFoundException('Plan not found');
+    requireClientAccess(user, plan.client_id);
     const availableAt = body.available_at || new Date().toISOString();
     const status = new Date(availableAt).getTime() <= Date.now() ? 'sent' : 'scheduled';
     const channel = body.channel === 'email_and_in_app' ? 'email_and_in_app' : 'in_app';
@@ -225,9 +344,10 @@ export class AppController {
 
   @Post('plans/deliveries/bulk')
   deliverPlans(@Req() request: FastifyRequest, @Body() body: { clientIds?: number[]; channel?: string; available_at?: string }) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     const clientIds = [...new Set((body.clientIds || []).map(Number).filter(Boolean))];
     if (!clientIds.length) throw new BadRequestException('Select at least one client');
+    clientIds.forEach((clientId) => requireClientAccess(user, clientId));
     const availableAt = body.available_at || new Date().toISOString();
     const status = new Date(availableAt).getTime() <= Date.now() ? 'sent' : 'scheduled';
     const channel = body.channel === 'email_and_in_app' ? 'email_and_in_app' : 'in_app';
@@ -249,6 +369,7 @@ export class AppController {
     const delivery = db.prepare('SELECT * FROM plan_deliveries WHERE id = ?').get(Number(id)) as any;
     if (!delivery) throw new NotFoundException('Delivery not found');
     if (user.role === 'client' && user.client_id !== delivery.client_id) throw new UnauthorizedException('This plan belongs to another client.');
+    if (user.role === 'trainer') requireClientAccess(user, delivery.client_id);
     db.prepare("UPDATE plan_deliveries SET status = 'viewed', viewed_at = COALESCE(viewed_at, ?) WHERE id = ?").run(new Date().toISOString(), delivery.id);
     return { ok: true };
   }
@@ -259,15 +380,17 @@ export class AppController {
     const delivery = db.prepare('SELECT * FROM plan_deliveries WHERE id = ?').get(Number(id)) as any;
     if (!delivery) throw new NotFoundException('Delivery not found');
     if (user.role === 'client' && user.client_id !== delivery.client_id) throw new UnauthorizedException('This plan belongs to another client.');
+    if (user.role === 'trainer') requireClientAccess(user, delivery.client_id);
     db.prepare("UPDATE plan_deliveries SET status = 'confirmed', confirmed_at = ?, feedback = ? WHERE id = ?").run(new Date().toISOString(), body.feedback || '', delivery.id);
     return { ok: true };
   }
 
   @Patch('sessions/:id')
   updateSession(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(Number(id)) as any;
     if (!session) throw new NotFoundException('Session not found');
+    requireClientAccess(user, session.client_id);
     const scheduledDate = body.scheduled_date || session.scheduled_date;
     const startTime = body.start_time || session.start_time || '09:00';
     const duration = Number(body.duration ?? session.duration ?? 60);
@@ -281,9 +404,10 @@ export class AppController {
 
   @Post('clients/:id/progress')
   addProgress(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
-    requireTrainer(request);
+    const user = requireTrainer(request);
     const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(Number(id));
     if (!client) throw new NotFoundException('Client not found');
+    requireClientAccess(user, Number(id));
     const info = db.prepare('INSERT INTO progress (client_id,recorded_date,weight,waist,body_fat,squat_max,feedback) VALUES (?,?,?,?,?,?,?)').run(Number(id), body.recorded_date || new Date().toISOString().slice(0,10), body.weight || null, body.waist || null, body.body_fat || null, body.squat_max || null, body.feedback || '');
     return db.prepare('SELECT * FROM progress WHERE id = ?').get(info.lastInsertRowid);
   }
