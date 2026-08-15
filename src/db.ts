@@ -241,7 +241,7 @@ export function createAuthCode(userId: number): string {
 
 export function consumeAuthCode(code: string): AuthUser | null {
   const hash = opaqueHash(code);
-  const row = db.prepare('SELECT user_id FROM auth_codes WHERE code_hash = ? AND expires_at > ?').get(hash) as { user_id: number } | undefined;
+  const row = db.prepare('SELECT user_id FROM auth_codes WHERE code_hash = ? AND expires_at > ?').get(hash, new Date().toISOString()) as { user_id: number } | undefined;
   db.prepare('DELETE FROM auth_codes WHERE code_hash = ?').run(hash);
   if (!row) return null;
   return db.prepare('SELECT id,email,display_name,role,client_id,active,last_login,password_reset_required FROM users WHERE id = ? AND active = 1').get(row.user_id) as AuthUser || null;
