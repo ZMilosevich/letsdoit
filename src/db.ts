@@ -97,6 +97,13 @@ CREATE TABLE IF NOT EXISTS users (
   password_reset_required INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS exercise_media (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  image_url TEXT NOT NULL,
+  owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS auth_sessions (
   token_hash TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -114,6 +121,36 @@ CREATE TABLE IF NOT EXISTS auth_codes (
   expires_at TEXT NOT NULL
 );
 `);
+
+export type ExerciseMedia = {
+  id: number;
+  name: string;
+  image_url: string;
+  owner_id?: number | null;
+};
+
+const exerciseIcon = (name: string, color: string) => {
+  const label = name.replace(/&/g, '&amp;').replace(/</g, '&lt;').slice(0, 28);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="${label}"><rect width="640" height="400" rx="36" fill="#f0f6f1"/><path d="M174 242h292M214 210h212M236 178h168M190 210v64m260-64v64" fill="none" stroke="${color}" stroke-width="22" stroke-linecap="round"/><circle cx="320" cy="106" r="38" fill="${color}" opacity=".92"/><path d="M320 144v74m0 0-68 52m68-52 68 52" fill="none" stroke="${color}" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/><text x="320" y="352" text-anchor="middle" fill="#25402e" font-family="Arial, sans-serif" font-size="28" font-weight="700">${label}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+};
+
+const systemExerciseMedia = [
+  ['Back squat', '#176b3a'], ['Romanian deadlift', '#1d6b5a'], ['Reverse lunge', '#176b3a'],
+  ['Dumbbell bench press', '#3863a5'], ['Single-arm cable row', '#3863a5'], ['Half-kneeling press', '#3863a5'],
+  ['Kettlebell deadlift', '#a55722'], ['Incline push-up', '#a55722'], ['Bike intervals', '#a55722'],
+  ['Zone 2 cardio', '#6e5ca9'], ['Mobility flow', '#6e5ca9'],
+] as const;
+
+function seedExerciseMedia(): void {
+  const insert = db.prepare('INSERT INTO exercise_media (name,image_url,owner_id) VALUES (?,?,NULL)');
+  const exists = db.prepare('SELECT id FROM exercise_media WHERE name = ? AND owner_id IS NULL');
+  systemExerciseMedia.forEach(([name, color]) => {
+    if (!exists.get(name)) insert.run(name, exerciseIcon(name, color));
+  });
+}
+
+seedExerciseMedia();
 
 // Existing installations used a two-role CHECK constraint. SQLite cannot alter it in place,
 // so migrate the account table while preserving ids referenced by sessions and auth codes.
@@ -399,11 +436,10 @@ export function completeOnboarding(userId: number, input: OnboardingInput): Auth
   return db.prepare('SELECT id,email,display_name,first_name,last_name,phone,profile_photo_url,preferred_language,trainer_bio,onboarding_completed,role,client_id,active,last_login,password_reset_required FROM users WHERE id = ? AND active = 1').get(userId) as AuthUser;
 }
 
-type Exercise = { name: string; sets: number; reps: string; intensity: string; rest: string; duration?: string; instructions: string };
+type Exercise = { name: string; sets: number; reps: string; intensity: string; rest: string; duration?: string; instructions: string; media?: ExerciseMedia[] };
 type Workout = { id: string; day: string; title: string; focus: string; duration: number; exercises: Exercise[] };
 
 export function localizeWorkouts(workouts: Workout[], language = 'hr'): Workout[] {
-  if (language !== 'hr') return workouts;
   const words: Record<string, string> = {
     Monday: 'Ponedjeljak', Wednesday: 'Srijeda', Friday: 'Petak', Saturday: 'Subota',
     'Lower body strength': 'Snaga donjeg dijela tijela', 'Upper body build': 'Snaga gornjeg dijela tijela',
@@ -423,7 +459,22 @@ export function localizeWorkouts(workouts: Workout[], language = 'hr'): Workout[
     'Stay at an easy, sustainable pace.': 'Održavajte lagani, održivi tempo.',
     'Move slowly and avoid pinching or pain.': 'Krećite se polako i izbjegavajte nelagodu ili bol.',
   };
-  return workouts.map((workout) => ({ ...workout, day: words[workout.day] || workout.day, title: words[workout.title] || workout.title, focus: words[workout.focus] || workout.focus, exercises: workout.exercises.map((exercise) => ({ ...exercise, instructions: instructions[exercise.instructions] || exercise.instructions })) }));
+  const library = new Map((db.prepare('SELECT id,name,image_url FROM exercise_media WHERE owner_id IS NULL').all() as ExerciseMedia[]).map((media) => [media.name.toLowerCase(), media]));
+  return workouts.map((workout) => ({
+    ...workout,
+    day: language === 'hr' ? words[workout.day] || workout.day : workout.day,
+    title: language === 'hr' ? words[workout.title] || workout.title : workout.title,
+    focus: language === 'hr' ? words[workout.focus] || workout.focus : workout.focus,
+    exercises: workout.exercises.map((exercise) => {
+      const savedMedia = Array.isArray(exercise.media) ? exercise.media : [];
+      const defaultMedia = library.get(exercise.name.toLowerCase());
+      return {
+        ...exercise,
+        instructions: language === 'hr' ? instructions[exercise.instructions] || exercise.instructions : exercise.instructions,
+        media: savedMedia.length ? savedMedia : defaultMedia ? [{ id: defaultMedia.id, name: defaultMedia.name, image_url: defaultMedia.image_url }] : [],
+      };
+    }),
+  }));
 }
 
 export function buildPlan(days: number, level: string, goal: string, limitations: string, language = 'hr'): Workout[] {

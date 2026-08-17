@@ -359,6 +359,33 @@ export class AppController {
     return client;
   }
 
+  @Get('exercise-media')
+  listExerciseMedia(@Req() request: FastifyRequest) {
+    const user = requireTrainer(request);
+    return db.prepare(`SELECT id,name,image_url,owner_id,created_at FROM exercise_media
+      WHERE owner_id IS NULL OR owner_id = ? ORDER BY owner_id IS NOT NULL, name COLLATE NOCASE`).all(user.id);
+  }
+
+  @Post('exercise-media')
+  addExerciseMedia(@Req() request: FastifyRequest, @Body() body: { name?: string; image_url?: string }) {
+    const user = requireTrainer(request);
+    const name = String(body?.name || '').trim().slice(0, 100);
+    const imageUrl = String(body?.image_url || '').trim();
+    if (!name) throw new BadRequestException('Give this exercise image a name.');
+    if (imageUrl.length > 2_800_000 || !/^(data:image\/|https?:\/\/)/.test(imageUrl)) throw new BadRequestException('Use an image smaller than 2 MB.');
+    const info = db.prepare('INSERT INTO exercise_media (name,image_url,owner_id) VALUES (?,?,?)').run(name, imageUrl, user.id);
+    return db.prepare('SELECT id,name,image_url,owner_id,created_at FROM exercise_media WHERE id = ?').get(info.lastInsertRowid);
+  }
+
+  @Delete('exercise-media/:id')
+  removeExerciseMedia(@Req() request: FastifyRequest, @Param('id') id: string) {
+    const user = requireTrainer(request);
+    const media = db.prepare('SELECT id,owner_id FROM exercise_media WHERE id = ?').get(Number(id)) as { id: number; owner_id: number | null } | undefined;
+    if (!media || media.owner_id !== user.id) throw new NotFoundException('Exercise image not found.');
+    db.prepare('DELETE FROM exercise_media WHERE id = ?').run(media.id);
+    return { ok: true };
+  }
+
   @Patch('plans/:id')
   updatePlan(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
     const user = requireTrainer(request);
