@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Activity, ArrowLeft, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleAlert, Clock3, Dumbbell, Edit3, Eye, Flame, KeyRound, LayoutDashboard, MoreHorizontal, Plus, Power, Search, ShieldCheck, Sparkles, Trash2, TrendingUp, UserRound, UserPlus, Users, X } from 'lucide-react';
 import { apiUrl, APP_BASE } from './lib/appBase';
@@ -50,10 +50,11 @@ function userInitials(user: AuthUser | null) {
 }
 
 function TrainerMenu() {
-  const [open,setOpen]=useState(false); const { language,setLanguage }=useLanguage(); const navigate=useNavigate(); const user=useCurrentUser();
+  const [open,setOpen]=useState(false); const { language,setLanguage }=useLanguage(); const navigate=useNavigate(); const user=useCurrentUser(); const menuRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!open)return;const close=(event:PointerEvent)=>{if(!menuRef.current?.contains(event.target as Node))setOpen(false)};window.addEventListener('pointerdown',close);return()=>window.removeEventListener('pointerdown',close)},[open]);
   async function logout(){await fetch(apiUrl('auth/logout'),{method:'POST'});localStorage.removeItem('letsdoit-session');navigate('/login',{replace:true});}
   const name=user?.display_name || (language==='hr'?'Trener':'Trainer');
-  return <div className="trainer-menu"><button className="sidebar-foot trainer-trigger" aria-label="Open trainer menu" aria-expanded={open} onClick={()=>setOpen(!open)}><div className="avatar small">{user?.profile_photo_url?<img src={user.profile_photo_url} alt=""/>:userInitials(user)}</div><div><strong>{name}</strong><span>{language==='hr'?'Trener':'Trainer'}</span></div><ChevronDown size={16}/></button>{open&&<div className="trainer-popover"><Link to="/profile" onClick={()=>setOpen(false)}><UserRound size={16}/>Trainer profile</Link><button className="popover-button" onClick={logout}>Sign out</button><div className="language-row"><span>Language</span><div><button className={language==='hr'?'active':''} onClick={()=>setLanguage('hr')}>HR</button><button className={language==='en'?'active':''} onClick={()=>setLanguage('en')}>EN</button></div></div></div>}</div>
+  return <div className="trainer-menu" ref={menuRef}><button className="sidebar-foot trainer-trigger" aria-label="Open trainer menu" aria-expanded={open} onClick={()=>setOpen(!open)}><div className="avatar small">{user?.profile_photo_url?<img src={user.profile_photo_url} alt=""/>:userInitials(user)}</div><div><strong>{name}</strong><span>{language==='hr'?'Trener':'Trainer'}</span></div><ChevronDown size={16}/></button>{open&&<div className="trainer-popover"><Link to="/profile" onClick={()=>setOpen(false)}><UserRound size={16}/>Trainer profile</Link><button className="popover-button" onClick={logout}>Sign out</button><div className="language-row"><span>Language</span><div><button className={language==='hr'?'active':''} onClick={()=>setLanguage('hr')}>HR</button><button className={language==='en'?'active':''} onClick={()=>setLanguage('en')}>EN</button></div></div></div>}</div>
 }
 
 function Dashboard() {
