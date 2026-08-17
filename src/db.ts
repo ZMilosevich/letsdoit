@@ -263,6 +263,38 @@ export function findUserByEmail(email: string): AuthUser | null {
   return user || null;
 }
 
+type GoogleProfile = {
+  email: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+};
+
+// A verified Google email is sufficient to establish the account identity. New
+// accounts start as pending clients only because the database needs a role; the
+// onboarding choice replaces it before the user reaches a workspace.
+export function findOrCreateGoogleUser(profile: GoogleProfile): AuthUser {
+  const existing = findUserByEmail(profile.email);
+  if (existing) return existing;
+
+  const firstName = String(profile.given_name || '').trim();
+  const lastName = String(profile.family_name || '').trim();
+  const fallbackName = profile.email.split('@')[0] || 'LetsDoIt user';
+  const displayName = String(profile.name || `${firstName} ${lastName}` || fallbackName).trim() || fallbackName;
+  const photo = String(profile.picture || '').trim();
+  const password = randomBytes(32).toString('base64url');
+
+  db.prepare(`INSERT INTO users (email,display_name,first_name,last_name,profile_photo_url,role,client_id,password_hash)
+    VALUES (?,?,?,?,?,'client',NULL,?)
+    ON CONFLICT(email) DO NOTHING`)
+    .run(profile.email, displayName, firstName, lastName, /^https?:\/\//.test(photo) ? photo : null, hashPassword(password));
+
+  const user = findUserByEmail(profile.email);
+  if (!user) throw new Error('Unable to create the Google account.');
+  return user;
+}
+
 export function createAuthCode(userId: number): string {
   const code = randomBytes(32).toString('base64url');
   db.prepare('DELETE FROM auth_codes WHERE expires_at <= ?').run(new Date().toISOString());

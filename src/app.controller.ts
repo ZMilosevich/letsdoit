@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { authenticate, AuthUser, buildPlan, completeOnboarding, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, createPassword, db, findUserByEmail, issueSession, localizeWorkouts, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, setAccountPassword, userForToken } from './db';
+import { authenticate, AuthUser, buildPlan, completeOnboarding, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, createPassword, db, findOrCreateGoogleUser, issueSession, localizeWorkouts, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, setAccountPassword, userForToken } from './db';
 
 seedIfEmpty();
 seedDeliveries();
@@ -98,9 +98,9 @@ export class AppController {
     const tokens = await tokenResponse.json() as { access_token?: string };
     if (!tokens.access_token) { loginUrl.searchParams.set('sso_error', 'failed'); return reply.code(302).redirect(loginUrl.toString()); }
     const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
-    const profile = await profileResponse.json() as { email?: string; email_verified?: boolean };
-    const user = profile.email && profile.email_verified ? findUserByEmail(profile.email) : null;
-    if (!user) { loginUrl.searchParams.set('sso_error', 'not_allowed'); return reply.code(302).redirect(loginUrl.toString()); }
+    const profile = await profileResponse.json() as { email?: string; email_verified?: boolean; name?: string; given_name?: string; family_name?: string; picture?: string };
+    if (!profile.email || !profile.email_verified) { loginUrl.searchParams.set('sso_error', 'failed'); return reply.code(302).redirect(loginUrl.toString()); }
+    const user = findOrCreateGoogleUser({ ...profile, email: profile.email });
     loginUrl.searchParams.set('code', createAuthCode(user.id));
     return reply.code(302).redirect(loginUrl.toString());
   }
