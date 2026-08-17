@@ -37,7 +37,7 @@ const localizeWeekLabel = (value:string, language:'hr'|'en') => {
 type ExerciseTemplate = Pick<Exercise,'name'|'sets'|'reps'|'intensity'|'rest'|'instructions'> & { mediaName?:string };
 const exerciseLibrary: ExerciseTemplate[] = [
   {name:'Back squat',sets:4,reps:'6',intensity:'RPE 6',rest:'2 min',instructions:'Brace before each rep. Keep pressure through the whole foot.'},
-  {name:'Box squat',sets:4,reps:'6',intensity:'RPE 6',rest:'2 min',instructions:'Brace before each rep. Keep pressure through the whole foot.',mediaName:'Back squat'},
+  {name:'Box squat',sets:4,reps:'6',intensity:'RPE 6',rest:'2 min',instructions:'Brace before each rep. Keep pressure through the whole foot.'},
   {name:'Romanian deadlift',sets:3,reps:'8',intensity:'RPE 7',rest:'90 sec',instructions:'Hinge at the hips and keep the load close.'},
   {name:'Reverse lunge',sets:3,reps:'10 / side',intensity:'Controlled',rest:'60 sec',instructions:'Use a range that stays pain free.'},
   {name:'Dumbbell bench press',sets:4,reps:'8',intensity:'RPE 7',rest:'90 sec',instructions:'Keep shoulder blades gently set throughout.'},
@@ -99,6 +99,8 @@ function Dashboard() {
   useEffect(()=>{ fetch(apiUrl('state')).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{setClients(d.clients);setTodaySchedule(d.todaySchedule||[])}).catch(()=>setError('Client updates could not be loaded.')); },[]);
   const visible=useMemo(()=> (clients||[]).filter(c=>(filter==='all'||c.status===filter)&&c.name.toLowerCase().includes(query.toLowerCase())),[clients,query,filter]);
   const completed=(clients||[]).reduce((n,c)=>n+(c.sessions?.completed||0),0);
+  const clientCount=clients?.length||0; const plansToReview=(clients||[]).filter(c=>c.status==='needs_plan').length; const needsAttention=(clients||[]).filter(c=>c.status==='attention'||c.status==='missed').length;
+  const metricCopy=language==='hr'?{noClients:'Još nema klijenata',noSessionsToday:'Danas nema zakazanih treninga',sessionsToday:(count:number)=>`${count} ${count===1?'trening zakazan danas':'treninga zakazano danas'}`,noCompleted:'Još nema završenih treninga',completed:(count:number)=>`${count} ${count===1?'završen trening':'završena treninga'}`,noPlans:'Nema planova za pregled',plans:(count:number)=>`${count} ${count===1?'plan čeka pregled':'planova čeka pregled'}`,noAttention:'Nema klijenata za praćenje',attention:(count:number)=>`${count} ${count===1?'klijent treba pažnju':'klijenta treba pažnju'}`}:{noClients:'No clients yet',noSessionsToday:'No sessions scheduled today',sessionsToday:(count:number)=>`${count} session${count===1?'':'s'} scheduled today`,noCompleted:'No completed sessions yet',completed:(count:number)=>`${count} completed session${count===1?'':'s'}`,noPlans:'No plans need review',plans:(count:number)=>`${count} plan${count===1?'':'s'} need review`,noAttention:'No client updates need attention',attention:(count:number)=>`${count} client${count===1?'':'s'} need attention`};
   const progressClient=(clients||[]).find(client=>(client.sessions?.completed||0)>0);
   const firstName=userFirstName(user);
   const greeting=language==='hr'?`Dobro jutro${firstName?`, ${firstName}`:''}`:`Good morning${firstName?`, ${firstName}`:''}`;
@@ -106,10 +108,10 @@ function Dashboard() {
   return <Shell><div className="page dashboard-page">
     <header className="page-header"><div><p className="eyebrow">{todayLabel}</p><h1>{greeting}</h1><p>{language==='hr'?'Evo kako vaši klijenti napreduju ovaj tjedan.':'Here’s how your clients are moving this week.'}</p></div><button className="primary" onClick={()=>setShowAdd(true)}><Plus size={18}/>Add client</button></header>
     <section className="metrics">
-      <Metric icon={<Users/>} label="Active clients" value={String(clients?.length||0)} detail="4 training this week" />
-      <Metric icon={<Check/>} label="Sessions completed" value={String(completed)} detail="78% completion rate" tone="success" />
-      <Metric icon={<Sparkles/>} label="Plans to review" value={String((clients||[]).filter(c=>c.status==='needs_plan').length)} detail="Before next Monday" tone="violet" />
-      <Metric icon={<CircleAlert/>} label="Need attention" value={String((clients||[]).filter(c=>c.status==='attention'||c.status==='missed').length)} detail="Down from last week" tone="warning" />
+      <Metric icon={<Users/>} label="Active clients" value={String(clientCount)} detail={clientCount===0?metricCopy.noClients:todaySchedule.length?metricCopy.sessionsToday(todaySchedule.length):metricCopy.noSessionsToday} />
+      <Metric icon={<Check/>} label="Sessions completed" value={String(completed)} detail={completed?metricCopy.completed(completed):metricCopy.noCompleted} tone="success" />
+      <Metric icon={<Sparkles/>} label="Plans to review" value={String(plansToReview)} detail={plansToReview?metricCopy.plans(plansToReview):metricCopy.noPlans} tone="violet" />
+      <Metric icon={<CircleAlert/>} label="Need attention" value={String(needsAttention)} detail={needsAttention?metricCopy.attention(needsAttention):metricCopy.noAttention} tone="warning" />
     </section>
     {progressClient&&<section className="attention-strip"><div className="attention-icon"><TrendingUp size={20}/></div><div><strong>{language==='hr'?'Spremna je tjedna prilagodba':'Weekly adjustment ready'}</strong><p>{language==='hr'?`${progressClient.name} je dovršio/la treninge. Pregledajte plan za sljedeći korak.`:`${progressClient.name} completed recent sessions. Review the plan for the next progression.`}</p></div><Link to={`/clients/${progressClient.id}/plan`}>{language==='hr'?'Pregledaj plan':'Review plan'} <ChevronRight size={16}/></Link></section>}
     <section className="today-schedule"><div className="section-title"><div><h2>Today’s schedule</h2><p>{todaySchedule.length ? `${todaySchedule.length} sessions planned` : 'No sessions scheduled today'}</p></div><Link to="/schedule">Open calendar <ChevronRight size={16}/></Link></div><div className="today-schedule-list">{todaySchedule.length?todaySchedule.map(session=><Link key={session.id} to="/schedule"><b>{session.start_time}</b><i className={`status ${session.status==='missed'?'cancelled':session.status}`}>{session.status}</i><span><strong>{session.client_name}</strong><small>{session.title} · {session.duration} min</small></span><ChevronRight size={17}/></Link>):<Link className="today-empty" to="/schedule"><Plus size={16}/>Schedule a training session</Link>}</div></section>

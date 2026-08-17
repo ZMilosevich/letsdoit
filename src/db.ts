@@ -130,7 +130,7 @@ export type ExerciseMedia = {
 };
 
 const systemExerciseMedia = [
-  ['Back squat', '/exercises/back-squat.jpg'], ['Romanian deadlift', '/exercises/romanian-deadlift.jpg'], ['Reverse lunge', '/exercises/reverse-lunge.jpg'],
+  ['Back squat', '/exercises/back-squat.jpg'], ['Box squat', '/exercises/box-squat.jpg'], ['Romanian deadlift', '/exercises/romanian-deadlift.jpg'], ['Reverse lunge', '/exercises/reverse-lunge.jpg'],
   ['Dumbbell bench press', '/exercises/dumbbell-bench-press.jpg'], ['Single-arm cable row', '/exercises/single-arm-cable-row.jpg'], ['Half-kneeling press', '/exercises/half-kneeling-press.jpg'],
   ['Kettlebell deadlift', '/exercises/kettlebell-deadlift.jpg'], ['Incline push-up', '/exercises/incline-push-up.jpg'], ['Bike intervals', '/exercises/bike-intervals.jpg'],
   ['Zone 2 cardio', '/exercises/zone-2-cardio.jpg'], ['Mobility flow', '/exercises/mobility-flow.jpg'],
@@ -442,7 +442,7 @@ export function localizeWorkouts(workouts: Workout[], language = 'hr'): Workout[
     'Lower body strength': 'Snaga donjeg dijela tijela', 'Upper body build': 'Snaga gornjeg dijela tijela',
     'Full body power': 'Snaga cijelog tijela', 'Aerobic capacity': 'Aerobni kapacitet', 'Mobility and recovery': 'Mobilnost i oporavak',
     Strength: 'Snaga', Conditioning: 'Kondicija', Recovery: 'Oporavak',
-    'Back squat': 'Stražnji čučanj', 'Romanian deadlift': 'Rumunjsko mrtvo dizanje', 'Reverse lunge': 'Iskorak unatrag',
+    'Back squat': 'Stražnji čučanj', 'Box squat': 'Čučanj na kutiju', 'Romanian deadlift': 'Rumunjsko mrtvo dizanje', 'Reverse lunge': 'Iskorak unatrag',
     'Dumbbell bench press': 'Potisak bučicama s klupe', 'Single-arm cable row': 'Veslanje na sajli jednom rukom', 'Half-kneeling press': 'Potisak iz poluklečećeg položaja',
     'Kettlebell deadlift': 'Mrtvo dizanje s girjom', 'Incline push-up': 'Sklek na povišenju', 'Bike intervals': 'Intervali na biciklu',
     'Zone 2 cardio': 'Kardio u zoni 2', 'Mobility flow': 'Vježbe mobilnosti',
