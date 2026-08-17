@@ -442,6 +442,12 @@ export function localizeWorkouts(workouts: Workout[], language = 'hr'): Workout[
     'Lower body strength': 'Snaga donjeg dijela tijela', 'Upper body build': 'Snaga gornjeg dijela tijela',
     'Full body power': 'Snaga cijelog tijela', 'Aerobic capacity': 'Aerobni kapacitet', 'Mobility and recovery': 'Mobilnost i oporavak',
     Strength: 'Snaga', Conditioning: 'Kondicija', Recovery: 'Oporavak',
+    'Back squat': 'Stražnji čučanj', 'Romanian deadlift': 'Rumunjsko mrtvo dizanje', 'Reverse lunge': 'Iskorak unatrag',
+    'Dumbbell bench press': 'Potisak bučicama s klupe', 'Single-arm cable row': 'Veslanje na sajli jednom rukom', 'Half-kneeling press': 'Potisak iz poluklečećeg položaja',
+    'Kettlebell deadlift': 'Mrtvo dizanje s girjom', 'Incline push-up': 'Sklek na povišenju', 'Bike intervals': 'Intervali na biciklu',
+    'Zone 2 cardio': 'Kardio u zoni 2', 'Mobility flow': 'Vježbe mobilnosti',
+    Controlled: 'Kontrolirano', Moderate: 'Umjereno', Easy: 'Lagano', Conversational: 'Razgovorni tempo', None: 'Bez odmora',
+    'As needed': 'Po potrebi', '2 reps in reserve': '2 ponavljanja u rezervi',
   };
   const instructions: Record<string, string> = {
     'Brace before each rep. Keep pressure through the whole foot.': 'Učvrstite trup prije svakog ponavljanja. Zadržite oslonac cijelim stopalom.',
@@ -468,6 +474,10 @@ export function localizeWorkouts(workouts: Workout[], language = 'hr'): Workout[
       const usesSystemMedia = Boolean(defaultMedia && savedMedia[0]?.id === defaultMedia.id);
       return {
         ...exercise,
+        name: language === 'hr' ? words[exercise.name] || exercise.name : exercise.name,
+        reps: language === 'hr' ? exercise.reps.replace(' / side', ' / strana').replace(' sec work', ' s rada').replace(' min', ' min') : exercise.reps,
+        intensity: language === 'hr' ? words[exercise.intensity] || exercise.intensity : exercise.intensity,
+        rest: language === 'hr' ? words[exercise.rest] || exercise.rest.replace(/ sec$/, ' s') : exercise.rest,
         instructions: language === 'hr' ? instructions[exercise.instructions] || exercise.instructions : exercise.instructions,
         media: usesSystemMedia || !savedMedia.length ? defaultMedia ? [{ id: defaultMedia.id, name: defaultMedia.name, image_url: defaultMedia.image_url }] : [] : savedMedia,
       };
