@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { authenticate, AuthUser, buildPlan, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, createPassword, db, findUserByEmail, issueSession, localizeWorkouts, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, setAccountPassword, userForToken } from './db';
+import { authenticate, AuthUser, buildPlan, completeOnboarding, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, createPassword, db, findUserByEmail, issueSession, localizeWorkouts, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, setAccountPassword, userForToken } from './db';
 
 seedIfEmpty();
 seedDeliveries();
@@ -114,6 +114,50 @@ export class AppController {
 
   @Get('auth/me')
   me(@Req() request: FastifyRequest) { return requireUser(request); }
+
+  @Post('auth/onboarding')
+  onboarding(@Req() request: FastifyRequest, @Body() body: any) {
+    const user = requireUser(request);
+    if (user.role === 'admin' || user.is_preview) throw new UnauthorizedException('Administrator access is assigned separately.');
+    const role = body?.role === 'trainer' ? 'trainer' : body?.role === 'client' ? 'client' : null;
+    const firstName = String(body?.first_name || '').trim();
+    const lastName = String(body?.last_name || '').trim();
+    const language = body?.preferred_language === 'en' ? 'en' : 'hr';
+    const photo = String(body?.profile_photo_url || '').trim();
+    if (!role || !firstName || !lastName) throw new BadRequestException('First and last name are required.');
+    if (photo && (photo.length > 2_800_000 || !(/^(data:image\/|https?:\/\/)/).test(photo))) throw new BadRequestException('Use an image smaller than 2 MB.');
+
+    if (role === 'client') {
+      const age = Number(body?.age);
+      const height = Number(body?.height);
+      const weight = Number(body?.weight);
+      const days = Number(body?.days_per_week);
+      const levels = ['Beginner', 'Intermediate', 'Advanced'];
+      if (!Number.isInteger(age) || age < 13 || age > 120 || height < 100 || height > 250 || weight < 25 || weight > 350 || ![2, 3, 4].includes(days) || !levels.includes(body?.fitness_level) || !String(body?.gender || '').trim() || !String(body?.goal || '').trim() || !String(body?.equipment || '').trim()) {
+        throw new BadRequestException('Please complete the required client assessment fields.');
+      }
+    }
+
+    const completed = completeOnboarding(user.id, {
+      role,
+      first_name: firstName,
+      last_name: lastName,
+      phone: String(body?.phone || '').slice(0, 60),
+      profile_photo_url: photo,
+      preferred_language: language,
+      basic_info: String(body?.basic_info || '').slice(0, 2000),
+      age: Number(body?.age),
+      gender: String(body?.gender || '').slice(0, 60),
+      height: Number(body?.height),
+      weight: Number(body?.weight),
+      fitness_level: String(body?.fitness_level || ''),
+      goal: String(body?.goal || '').trim().slice(0, 300),
+      limitations: String(body?.limitations || '').trim().slice(0, 2000),
+      days_per_week: Number(body?.days_per_week),
+      equipment: String(body?.equipment || '').trim().slice(0, 1000),
+    });
+    return { user: completed };
+  }
 
   @Post('auth/logout')
   logout(@Req() request: FastifyRequest) { revokeSession(tokenFrom(request)); return { ok: true }; }

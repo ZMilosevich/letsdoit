@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS clients (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   email TEXT NOT NULL DEFAULT '',
+  gender TEXT NOT NULL DEFAULT '',
+  profile_photo_url TEXT,
   initials TEXT NOT NULL,
   goal TEXT NOT NULL,
   age INTEGER NOT NULL,
@@ -28,6 +30,8 @@ CREATE TABLE IF NOT EXISTS clients (
   days_per_week INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'on_track',
   last_active TEXT NOT NULL,
+  language TEXT NOT NULL DEFAULT 'hr',
+  trainer_id INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS plans (
@@ -78,6 +82,13 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   display_name TEXT NOT NULL,
+  first_name TEXT NOT NULL DEFAULT '',
+  last_name TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '',
+  profile_photo_url TEXT,
+  preferred_language TEXT NOT NULL DEFAULT 'hr',
+  trainer_bio TEXT NOT NULL DEFAULT '',
+  onboarding_completed INTEGER NOT NULL DEFAULT 0,
   role TEXT NOT NULL CHECK(role IN ('admin','trainer','client')),
   client_id INTEGER UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
   password_hash TEXT NOT NULL,
@@ -107,7 +118,8 @@ CREATE TABLE IF NOT EXISTS auth_codes (
 // Existing installations used a two-role CHECK constraint. SQLite cannot alter it in place,
 // so migrate the account table while preserving ids referenced by sessions and auth codes.
 const usersSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as { sql?: string } | undefined)?.sql || '';
-if (!usersSql.includes("'admin'")) {
+const requiresAdminRoleMigration = !usersSql.includes("'admin'");
+if (requiresAdminRoleMigration) {
   db.pragma('foreign_keys = OFF');
   db.exec(`
     BEGIN;
@@ -115,6 +127,13 @@ if (!usersSql.includes("'admin'")) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL UNIQUE COLLATE NOCASE,
       display_name TEXT NOT NULL,
+      first_name TEXT NOT NULL DEFAULT '',
+      last_name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      profile_photo_url TEXT,
+      preferred_language TEXT NOT NULL DEFAULT 'hr',
+      trainer_bio TEXT NOT NULL DEFAULT '',
+      onboarding_completed INTEGER NOT NULL DEFAULT 0,
       role TEXT NOT NULL CHECK(role IN ('admin','trainer','client')),
       client_id INTEGER UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
       password_hash TEXT NOT NULL,
@@ -135,13 +154,25 @@ const userColumns = db.prepare("PRAGMA table_info(users)").all() as { name: stri
 if (!userColumns.some((column) => column.name === 'active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
 if (!userColumns.some((column) => column.name === 'last_login')) db.exec('ALTER TABLE users ADD COLUMN last_login TEXT');
 if (!userColumns.some((column) => column.name === 'password_reset_required')) db.exec('ALTER TABLE users ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0');
+if (!userColumns.some((column) => column.name === 'first_name')) db.exec("ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''");
+if (!userColumns.some((column) => column.name === 'last_name')) db.exec("ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''");
+if (!userColumns.some((column) => column.name === 'phone')) db.exec("ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''");
+if (!userColumns.some((column) => column.name === 'profile_photo_url')) db.exec('ALTER TABLE users ADD COLUMN profile_photo_url TEXT');
+if (!userColumns.some((column) => column.name === 'preferred_language')) db.exec("ALTER TABLE users ADD COLUMN preferred_language TEXT NOT NULL DEFAULT 'hr'");
+if (!userColumns.some((column) => column.name === 'trainer_bio')) db.exec("ALTER TABLE users ADD COLUMN trainer_bio TEXT NOT NULL DEFAULT ''");
+if (!userColumns.some((column) => column.name === 'onboarding_completed')) {
+  db.exec('ALTER TABLE users ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0');
+  // Keep people already using an upgraded workspace out of the first-sign-in flow.
+  db.prepare('UPDATE users SET onboarding_completed = 1').run();
+}
+if (requiresAdminRoleMigration) db.prepare('UPDATE users SET onboarding_completed = 1').run();
 
 const initialClientColumns = db.prepare("PRAGMA table_info(clients)").all() as { name: string }[];
 if (!initialClientColumns.some((column) => column.name === 'trainer_id')) db.exec('ALTER TABLE clients ADD COLUMN trainer_id INTEGER');
 const authSessionColumns = db.prepare("PRAGMA table_info(auth_sessions)").all() as { name: string }[];
 if (!authSessionColumns.some((column) => column.name === 'is_preview')) db.exec('ALTER TABLE auth_sessions ADD COLUMN is_preview INTEGER NOT NULL DEFAULT 0');
 
-type Account = { id: number; email: string; display_name: string; role: 'admin' | 'trainer' | 'client'; client_id: number | null; password_hash: string; active: number; last_login: string | null; password_reset_required: number };
+type Account = { id: number; email: string; display_name: string; first_name: string; last_name: string; phone: string; profile_photo_url: string | null; preferred_language: 'hr' | 'en'; trainer_bio: string; onboarding_completed: number; role: 'admin' | 'trainer' | 'client'; client_id: number | null; password_hash: string; active: number; last_login: string | null; password_reset_required: number };
 export type AuthUser = Omit<Account, 'password_hash'> & { is_preview?: number };
 
 const hashPassword = (password: string, salt = randomBytes(16).toString('hex')) => `${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
@@ -198,7 +229,7 @@ export function issueSession(userId: number, recordLogin = true, isPreview = fal
 export function userForToken(token: string): AuthUser | null {
   if (!token) return null;
   const hash = scryptSync(token, 'letsdoit-session', 64).toString('hex');
-  const user = db.prepare(`SELECT users.id,users.email,users.display_name,users.role,users.client_id,users.active,users.last_login,users.password_reset_required,auth_sessions.is_preview
+  const user = db.prepare(`SELECT users.id,users.email,users.display_name,users.first_name,users.last_name,users.phone,users.profile_photo_url,users.preferred_language,users.trainer_bio,users.onboarding_completed,users.role,users.client_id,users.active,users.last_login,users.password_reset_required,auth_sessions.is_preview
     FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
     WHERE auth_sessions.token_hash = ? AND auth_sessions.expires_at > ? AND users.active = 1`).get(hash, new Date().toISOString()) as AuthUser | undefined;
   return user || null;
@@ -228,7 +259,7 @@ export function consumeOauthState(state: string): string | null {
 }
 
 export function findUserByEmail(email: string): AuthUser | null {
-  const user = db.prepare('SELECT id,email,display_name,role,client_id,active,last_login,password_reset_required FROM users WHERE email = ? AND active = 1').get(email) as AuthUser | undefined;
+  const user = db.prepare('SELECT id,email,display_name,first_name,last_name,phone,profile_photo_url,preferred_language,trainer_bio,onboarding_completed,role,client_id,active,last_login,password_reset_required FROM users WHERE email = ? AND active = 1').get(email) as AuthUser | undefined;
   return user || null;
 }
 
@@ -244,7 +275,7 @@ export function consumeAuthCode(code: string): AuthUser | null {
   const row = db.prepare('SELECT user_id FROM auth_codes WHERE code_hash = ? AND expires_at > ?').get(hash, new Date().toISOString()) as { user_id: number } | undefined;
   db.prepare('DELETE FROM auth_codes WHERE code_hash = ?').run(hash);
   if (!row) return null;
-  return db.prepare('SELECT id,email,display_name,role,client_id,active,last_login,password_reset_required FROM users WHERE id = ? AND active = 1').get(row.user_id) as AuthUser || null;
+  return db.prepare('SELECT id,email,display_name,first_name,last_name,phone,profile_photo_url,preferred_language,trainer_bio,onboarding_completed,role,client_id,active,last_login,password_reset_required FROM users WHERE id = ? AND active = 1').get(row.user_id) as AuthUser || null;
 }
 
 export function createPassword(): string {
@@ -258,6 +289,8 @@ export function setAccountPassword(userId: number, password: string, requireRese
 
 // Lightweight migration for workspaces created before client language preference existed.
 const clientColumns = db.prepare("PRAGMA table_info(clients)").all() as { name: string }[];
+if (!clientColumns.some((column) => column.name === 'gender')) db.exec("ALTER TABLE clients ADD COLUMN gender TEXT NOT NULL DEFAULT ''");
+if (!clientColumns.some((column) => column.name === 'profile_photo_url')) db.exec('ALTER TABLE clients ADD COLUMN profile_photo_url TEXT');
 if (!clientColumns.some((column) => column.name === 'language')) {
   db.exec("ALTER TABLE clients ADD COLUMN language TEXT NOT NULL DEFAULT 'hr'");
 }
@@ -270,6 +303,69 @@ if (!sessionColumns.some((column) => column.name === 'recurrence_rule')) db.exec
 
 db.prepare("UPDATE sessions SET start_time = CASE id WHEN 1 THEN '08:00' WHEN 2 THEN '17:00' WHEN 3 THEN '09:00' WHEN 4 THEN '07:30' WHEN 5 THEN '09:30' WHEN 6 THEN '18:00' WHEN 7 THEN '16:30' ELSE start_time END WHERE start_time = '09:00'").run();
 db.prepare("UPDATE sessions SET training_type = CASE WHEN title LIKE '%Mobility%' THEN 'Recovery' WHEN title LIKE '%run%' OR title LIKE '%interval%' THEN 'Conditioning' ELSE 'Strength' END WHERE training_type = 'Strength'").run();
+
+export type OnboardingInput = {
+  role: 'trainer' | 'client';
+  first_name: string;
+  last_name: string;
+  phone?: string;
+  profile_photo_url?: string;
+  preferred_language: 'hr' | 'en';
+  basic_info?: string;
+  age?: number;
+  gender?: string;
+  height?: number;
+  weight?: number;
+  fitness_level?: string;
+  goal?: string;
+  limitations?: string;
+  days_per_week?: number;
+  equipment?: string;
+};
+
+export function completeOnboarding(userId: number, input: OnboardingInput): AuthUser {
+  const account = db.prepare('SELECT id,email,client_id FROM users WHERE id = ? AND active = 1').get(userId) as { id: number; email: string; client_id: number | null } | undefined;
+  if (!account) throw new Error('Active account not found.');
+
+  const firstName = input.first_name.trim();
+  const lastName = input.last_name.trim();
+  const displayName = `${firstName} ${lastName}`.trim();
+  const language = input.preferred_language === 'en' ? 'en' : 'hr';
+  const profilePhoto = input.profile_photo_url?.trim() || null;
+  const initials = `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
+  const update = db.transaction(() => {
+    let clientId: number | null = null;
+    if (input.role === 'client') {
+      const condition = language === 'hr' ? 'Početna procjena dovršena' : 'Initial assessment completed';
+      const preferences = language === 'hr' ? 'Nije navedeno' : 'Not specified';
+      const clientValues = [displayName, account.email, input.gender || '', profilePhoto, initials, input.goal || '', Number(input.age), Number(input.weight), Number(input.height), input.fitness_level || 'Beginner', condition, input.limitations || '', input.equipment || '', preferences, Number(input.days_per_week), language] as const;
+      if (account.client_id) {
+        clientId = account.client_id;
+        db.prepare(`UPDATE clients SET name=?,email=?,gender=?,profile_photo_url=?,initials=?,goal=?,age=?,weight=?,height=?,fitness_level=?,condition=?,limitations=?,equipment=?,preferences=?,days_per_week=?,language=?,last_active='Just now' WHERE id=?`)
+          .run(...clientValues, clientId);
+      } else {
+        const info = db.prepare(`INSERT INTO clients (name,email,gender,profile_photo_url,initials,goal,age,weight,height,fitness_level,condition,limitations,equipment,preferences,days_per_week,status,last_active,language,trainer_id)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'needs_plan','Just now',?,NULL)`)
+          .run(...clientValues);
+        clientId = Number(info.lastInsertRowid);
+      }
+
+      const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId) as any;
+      const workouts = buildPlan(client.days_per_week, client.fitness_level, client.goal, client.limitations, client.language);
+      const rationale = language === 'hr'
+        ? 'Izrađeno iz početne procjene. Pregledajte odabir vježbi, volumen i intenzitet prije objave.'
+        : 'Created from the initial assessment. Review exercise selection, volume, and intensity before assigning.';
+      const latestPlan = db.prepare('SELECT id,status FROM plans WHERE client_id = ? ORDER BY id DESC LIMIT 1').get(clientId) as { id: number; status: string } | undefined;
+      if (!latestPlan) db.prepare('INSERT INTO plans (client_id,week_label,status,workouts_json,rationale) VALUES (?,?,?,?,?)').run(clientId, language === 'hr' ? 'Sljedeći tjedan' : 'Next week', 'draft', JSON.stringify(workouts), rationale);
+      else if (latestPlan.status === 'draft') db.prepare('UPDATE plans SET workouts_json = ?, rationale = ? WHERE id = ?').run(JSON.stringify(workouts), rationale, latestPlan.id);
+    }
+
+    db.prepare(`UPDATE users SET display_name=?,first_name=?,last_name=?,phone=?,profile_photo_url=?,preferred_language=?,trainer_bio=?,role=?,client_id=?,onboarding_completed=1 WHERE id=?`)
+      .run(displayName, firstName, lastName, input.phone?.trim() || '', profilePhoto, language, input.role === 'trainer' ? input.basic_info?.trim() || '' : '', input.role, clientId, userId);
+  });
+  update();
+  return db.prepare('SELECT id,email,display_name,first_name,last_name,phone,profile_photo_url,preferred_language,trainer_bio,onboarding_completed,role,client_id,active,last_login,password_reset_required FROM users WHERE id = ? AND active = 1').get(userId) as AuthUser;
+}
 
 type Exercise = { name: string; sets: number; reps: string; intensity: string; rest: string; duration?: string; instructions: string };
 type Workout = { id: string; day: string; title: string; focus: string; duration: number; exercises: Exercise[] };
