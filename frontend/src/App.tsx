@@ -34,14 +34,30 @@ function Shell({ children, active='dashboard' }:{children:React.ReactNode;active
   </div>
 }
 
+function useCurrentUser() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  useEffect(() => { fetch(apiUrl('auth/me')).then(response => response.ok ? response.json() : null).then(setUser).catch(() => setUser(null)); }, []);
+  return user;
+}
+
+function userFirstName(user: AuthUser | null) {
+  return user?.first_name || user?.display_name.trim().split(/\s+/)[0] || '';
+}
+
+function userInitials(user: AuthUser | null) {
+  const name = user?.display_name || '';
+  return name.split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'TR';
+}
+
 function TrainerMenu() {
-  const [open,setOpen]=useState(false); const { language,setLanguage }=useLanguage(); const navigate=useNavigate();
+  const [open,setOpen]=useState(false); const { language,setLanguage }=useLanguage(); const navigate=useNavigate(); const user=useCurrentUser();
   async function logout(){await fetch(apiUrl('auth/logout'),{method:'POST'});localStorage.removeItem('letsdoit-session');navigate('/login',{replace:true});}
-  return <div className="trainer-menu"><button className="sidebar-foot trainer-trigger" aria-label="Open trainer menu" aria-expanded={open} onClick={()=>setOpen(!open)}><div className="avatar small">KO</div><div><strong>Kiki Obra</strong><span>Head trainer</span></div><ChevronDown size={16}/></button>{open&&<div className="trainer-popover"><Link to="/profile" onClick={()=>setOpen(false)}><UserRound size={16}/>Trainer profile</Link><button className="popover-button" onClick={logout}>Sign out</button><div className="language-row"><span>Language</span><div><button className={language==='hr'?'active':''} onClick={()=>setLanguage('hr')}>HR</button><button className={language==='en'?'active':''} onClick={()=>setLanguage('en')}>EN</button></div></div></div>}</div>
+  const name=user?.display_name || (language==='hr'?'Trener':'Trainer');
+  return <div className="trainer-menu"><button className="sidebar-foot trainer-trigger" aria-label="Open trainer menu" aria-expanded={open} onClick={()=>setOpen(!open)}><div className="avatar small">{user?.profile_photo_url?<img src={user.profile_photo_url} alt=""/>:userInitials(user)}</div><div><strong>{name}</strong><span>{language==='hr'?'Trener':'Trainer'}</span></div><ChevronDown size={16}/></button>{open&&<div className="trainer-popover"><Link to="/profile" onClick={()=>setOpen(false)}><UserRound size={16}/>Trainer profile</Link><button className="popover-button" onClick={logout}>Sign out</button><div className="language-row"><span>Language</span><div><button className={language==='hr'?'active':''} onClick={()=>setLanguage('hr')}>HR</button><button className={language==='en'?'active':''} onClick={()=>setLanguage('en')}>EN</button></div></div></div>}</div>
 }
 
 function Dashboard() {
-  const [clients,setClients]=useState<Client[]|null>(null);
+  const [clients,setClients]=useState<Client[]|null>(null); const {language}=useLanguage(); const user=useCurrentUser();
   const [todaySchedule,setTodaySchedule]=useState<CalendarSession[]>([]);
   const [error,setError]=useState('');
   const [query,setQuery]=useState('');
@@ -50,15 +66,19 @@ function Dashboard() {
   useEffect(()=>{ fetch(apiUrl('state')).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{setClients(d.clients);setTodaySchedule(d.todaySchedule||[])}).catch(()=>setError('Client updates could not be loaded.')); },[]);
   const visible=useMemo(()=> (clients||[]).filter(c=>(filter==='all'||c.status===filter)&&c.name.toLowerCase().includes(query.toLowerCase())),[clients,query,filter]);
   const completed=(clients||[]).reduce((n,c)=>n+(c.sessions?.completed||0),0);
+  const progressClient=(clients||[]).find(client=>(client.sessions?.completed||0)>0);
+  const firstName=userFirstName(user);
+  const greeting=language==='hr'?`Dobro jutro${firstName?`, ${firstName}`:''}`:`Good morning${firstName?`, ${firstName}`:''}`;
+  const todayLabel=new Intl.DateTimeFormat(language==='hr'?'hr-HR':'en-US',{weekday:'long',month:'long',day:'numeric'}).format(new Date());
   return <Shell><div className="page dashboard-page">
-    <header className="page-header"><div><p className="eyebrow">Thursday, August 13</p><h1>Good morning, Kiki</h1><p>Here’s how your clients are moving this week.</p></div><button className="primary" onClick={()=>setShowAdd(true)}><Plus size={18}/>Add client</button></header>
+    <header className="page-header"><div><p className="eyebrow">{todayLabel}</p><h1>{greeting}</h1><p>{language==='hr'?'Evo kako vaši klijenti napreduju ovaj tjedan.':'Here’s how your clients are moving this week.'}</p></div><button className="primary" onClick={()=>setShowAdd(true)}><Plus size={18}/>Add client</button></header>
     <section className="metrics">
       <Metric icon={<Users/>} label="Active clients" value={String(clients?.length||0)} detail="4 training this week" />
       <Metric icon={<Check/>} label="Sessions completed" value={String(completed)} detail="78% completion rate" tone="success" />
       <Metric icon={<Sparkles/>} label="Plans to review" value={String((clients||[]).filter(c=>c.status==='needs_plan').length)} detail="Before next Monday" tone="violet" />
       <Metric icon={<CircleAlert/>} label="Need attention" value={String((clients||[]).filter(c=>c.status==='attention'||c.status==='missed').length)} detail="Down from last week" tone="warning" />
     </section>
-    <section className="attention-strip"><div className="attention-icon"><TrendingUp size={20}/></div><div><strong>Weekly adjustment ready</strong><p>Maya completed every session and reported lower difficulty. A progression is ready for your review.</p></div><Link to="/clients/1/plan">Review plan <ChevronRight size={16}/></Link></section>
+    {progressClient&&<section className="attention-strip"><div className="attention-icon"><TrendingUp size={20}/></div><div><strong>{language==='hr'?'Spremna je tjedna prilagodba':'Weekly adjustment ready'}</strong><p>{language==='hr'?`${progressClient.name} je dovršio/la treninge. Pregledajte plan za sljedeći korak.`:`${progressClient.name} completed recent sessions. Review the plan for the next progression.`}</p></div><Link to={`/clients/${progressClient.id}/plan`}>{language==='hr'?'Pregledaj plan':'Review plan'} <ChevronRight size={16}/></Link></section>}
     <section className="today-schedule"><div className="section-title"><div><h2>Today’s schedule</h2><p>{todaySchedule.length ? `${todaySchedule.length} sessions planned` : 'No sessions scheduled today'}</p></div><Link to="/schedule">Open calendar <ChevronRight size={16}/></Link></div><div className="today-schedule-list">{todaySchedule.length?todaySchedule.map(session=><Link key={session.id} to="/schedule"><b>{session.start_time}</b><i className={`status ${session.status==='missed'?'cancelled':session.status}`}>{session.status}</i><span><strong>{session.client_name}</strong><small>{session.title} · {session.duration} min</small></span><ChevronRight size={17}/></Link>):<Link className="today-empty" to="/schedule"><Plus size={16}/>Schedule a training session</Link>}</div></section>
     <section className="client-section">
       <div className="section-head"><div><h2>Clients</h2><p>Training status and weekly momentum</p></div><div className="tools"><label className="search"><Search size={17}/><input aria-label="Search clients" placeholder="Search clients" value={query} onChange={e=>setQuery(e.target.value)}/></label><select aria-label="Filter clients" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All clients</option><option value="on_track">On track</option><option value="attention">Needs attention</option><option value="needs_plan">Plan needed</option><option value="missed">Missed sessions</option></select></div></div>
@@ -135,8 +155,8 @@ function ReportsPage() {
 }
 
 function TrainerProfile() {
-  const { language,setLanguage }=useLanguage();
-  return <Shell><div className="page nav-page"><header className="page-header"><div><p className="eyebrow">Trainer account</p><h1>Kiki Obra</h1><p>Manage your workspace preferences and language.</p></div></header><section className="profile-settings"><div><h2>Language</h2><p>Croatian is the default for new users. Your choice is saved for future visits.</p></div><div className="language-choice"><button className={language==='hr'?'selected':''} onClick={()=>setLanguage('hr')}>Hrvatski <small>Default</small></button><button className={language==='en'?'selected':''} onClick={()=>setLanguage('en')}>English</button></div></section></div></Shell>
+  const { language,setLanguage }=useLanguage(); const user=useCurrentUser();
+  return <Shell><div className="page nav-page"><header className="page-header"><div><p className="eyebrow">Trainer account</p><h1>{user?.display_name|| (language==='hr'?'Trener':'Trainer')}</h1><p>Manage your workspace preferences and language.</p></div></header><section className="profile-settings"><div><h2>Language</h2><p>Croatian is the default for new users. Your choice is saved for future visits.</p></div><div className="language-choice"><button className={language==='hr'?'selected':''} onClick={()=>setLanguage('hr')}>Hrvatski <small>Default</small></button><button className={language==='en'?'selected':''} onClick={()=>setLanguage('en')}>English</button></div></section></div></Shell>
 }
 
 function AddClient({onClose,onCreated}:{onClose:()=>void;onCreated:(c:Client)=>void}) {
