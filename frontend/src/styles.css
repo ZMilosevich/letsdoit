@@ -167,3 +167,5 @@ body{font-size:var(--type-body);line-height:1.5}
 
 /* Preserve a clear chevron against its hover background. */
 .portal-actions button:hover,.icon-action:hover{background:var(--accent-soft);color:var(--accent)}
+
+.metrics .metric small{display:block;line-height:1.3!important;padding-top:7px}

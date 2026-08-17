@@ -92,19 +92,22 @@ function TrainerMenu() {
 function Dashboard() {
   const [clients,setClients]=useState<Client[]|null>(null); const {language}=useLanguage(); const user=useCurrentUser();
   const [todaySchedule,setTodaySchedule]=useState<CalendarSession[]>([]);
+  const [now,setNow]=useState(()=>new Date());
   const [error,setError]=useState('');
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState('all');
   const [showAdd,setShowAdd]=useState(false);
   useEffect(()=>{ fetch(apiUrl('state')).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{setClients(d.clients);setTodaySchedule(d.todaySchedule||[])}).catch(()=>setError('Client updates could not be loaded.')); },[]);
+  useEffect(()=>{const timer=window.setInterval(()=>setNow(new Date()),60_000);return()=>window.clearInterval(timer)},[]);
   const visible=useMemo(()=> (clients||[]).filter(c=>(filter==='all'||c.status===filter)&&c.name.toLowerCase().includes(query.toLowerCase())),[clients,query,filter]);
   const completed=(clients||[]).reduce((n,c)=>n+(c.sessions?.completed||0),0);
   const clientCount=clients?.length||0; const plansToReview=(clients||[]).filter(c=>c.status==='needs_plan').length; const needsAttention=(clients||[]).filter(c=>c.status==='attention'||c.status==='missed').length;
   const metricCopy=language==='hr'?{noClients:'Još nema klijenata',noSessionsToday:'Danas nema zakazanih treninga',sessionsToday:(count:number)=>`${count} ${count===1?'trening zakazan danas':'treninga zakazano danas'}`,noCompleted:'Još nema završenih treninga',completed:(count:number)=>`${count} ${count===1?'završen trening':'završena treninga'}`,noPlans:'Nema planova za pregled',plans:(count:number)=>`${count} ${count===1?'plan čeka pregled':'planova čeka pregled'}`,noAttention:'Nema klijenata za praćenje',attention:(count:number)=>`${count} ${count===1?'klijent treba pažnju':'klijenta treba pažnju'}`}:{noClients:'No clients yet',noSessionsToday:'No sessions scheduled today',sessionsToday:(count:number)=>`${count} session${count===1?'':'s'} scheduled today`,noCompleted:'No completed sessions yet',completed:(count:number)=>`${count} completed session${count===1?'':'s'}`,noPlans:'No plans need review',plans:(count:number)=>`${count} plan${count===1?'':'s'} need review`,noAttention:'No client updates need attention',attention:(count:number)=>`${count} client${count===1?'':'s'} need attention`};
   const progressClient=(clients||[]).find(client=>(client.sessions?.completed||0)>0);
   const firstName=userFirstName(user);
-  const greeting=language==='hr'?`Dobro jutro${firstName?`, ${firstName}`:''}`:`Good morning${firstName?`, ${firstName}`:''}`;
-  const todayLabel=new Intl.DateTimeFormat(language==='hr'?'hr-HR':'en-US',{weekday:'long',month:'long',day:'numeric'}).format(new Date());
+  const hour=now.getHours(); const greetingLabel=language==='hr'?(hour<12?'Dobro jutro':hour<18?'Dobar dan':'Dobra večer'):(hour<12?'Good morning':hour<18?'Good afternoon':'Good evening');
+  const greeting=`${greetingLabel}${firstName?`, ${firstName}`:''}`;
+  const todayLabel=new Intl.DateTimeFormat(language==='hr'?'hr-HR':'en-US',{weekday:'long',month:'long',day:'numeric'}).format(now);
   return <Shell><div className="page dashboard-page">
     <header className="page-header"><div><p className="eyebrow">{todayLabel}</p><h1>{greeting}</h1><p>{language==='hr'?'Evo kako vaši klijenti napreduju ovaj tjedan.':'Here’s how your clients are moving this week.'}</p></div><button className="primary" onClick={()=>setShowAdd(true)}><Plus size={18}/>Add client</button></header>
     <section className="metrics">
