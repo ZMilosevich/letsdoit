@@ -129,24 +129,21 @@ export type ExerciseMedia = {
   owner_id?: number | null;
 };
 
-const exerciseIcon = (name: string, color: string) => {
-  const label = name.replace(/&/g, '&amp;').replace(/</g, '&lt;').slice(0, 28);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="${label}"><rect width="640" height="400" rx="36" fill="#f0f6f1"/><path d="M174 242h292M214 210h212M236 178h168M190 210v64m260-64v64" fill="none" stroke="${color}" stroke-width="22" stroke-linecap="round"/><circle cx="320" cy="106" r="38" fill="${color}" opacity=".92"/><path d="M320 144v74m0 0-68 52m68-52 68 52" fill="none" stroke="${color}" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/><text x="320" y="352" text-anchor="middle" fill="#25402e" font-family="Arial, sans-serif" font-size="28" font-weight="700">${label}</text></svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-};
-
 const systemExerciseMedia = [
-  ['Back squat', '#176b3a'], ['Romanian deadlift', '#1d6b5a'], ['Reverse lunge', '#176b3a'],
-  ['Dumbbell bench press', '#3863a5'], ['Single-arm cable row', '#3863a5'], ['Half-kneeling press', '#3863a5'],
-  ['Kettlebell deadlift', '#a55722'], ['Incline push-up', '#a55722'], ['Bike intervals', '#a55722'],
-  ['Zone 2 cardio', '#6e5ca9'], ['Mobility flow', '#6e5ca9'],
+  ['Back squat', '/exercises/back-squat.jpg'], ['Romanian deadlift', '/exercises/romanian-deadlift.jpg'], ['Reverse lunge', '/exercises/reverse-lunge.jpg'],
+  ['Dumbbell bench press', '/exercises/dumbbell-bench-press.jpg'], ['Single-arm cable row', '/exercises/single-arm-cable-row.jpg'], ['Half-kneeling press', '/exercises/half-kneeling-press.jpg'],
+  ['Kettlebell deadlift', '/exercises/kettlebell-deadlift.jpg'], ['Incline push-up', '/exercises/incline-push-up.jpg'], ['Bike intervals', '/exercises/bike-intervals.jpg'],
+  ['Zone 2 cardio', '/exercises/zone-2-cardio.jpg'], ['Mobility flow', '/exercises/mobility-flow.jpg'],
 ] as const;
 
 function seedExerciseMedia(): void {
   const insert = db.prepare('INSERT INTO exercise_media (name,image_url,owner_id) VALUES (?,?,NULL)');
   const exists = db.prepare('SELECT id FROM exercise_media WHERE name = ? AND owner_id IS NULL');
-  systemExerciseMedia.forEach(([name, color]) => {
-    if (!exists.get(name)) insert.run(name, exerciseIcon(name, color));
+  const update = db.prepare('UPDATE exercise_media SET image_url = ? WHERE id = ?');
+  systemExerciseMedia.forEach(([name, imageUrl]) => {
+    const current = exists.get(name) as { id: number } | undefined;
+    if (current) update.run(imageUrl, current.id);
+    else insert.run(name, imageUrl);
   });
 }
 
@@ -468,10 +465,11 @@ export function localizeWorkouts(workouts: Workout[], language = 'hr'): Workout[
     exercises: workout.exercises.map((exercise) => {
       const savedMedia = Array.isArray(exercise.media) ? exercise.media : [];
       const defaultMedia = library.get(exercise.name.toLowerCase());
+      const usesSystemMedia = Boolean(defaultMedia && savedMedia[0]?.id === defaultMedia.id);
       return {
         ...exercise,
         instructions: language === 'hr' ? instructions[exercise.instructions] || exercise.instructions : exercise.instructions,
-        media: savedMedia.length ? savedMedia : defaultMedia ? [{ id: defaultMedia.id, name: defaultMedia.name, image_url: defaultMedia.image_url }] : [],
+        media: usesSystemMedia || !savedMedia.length ? defaultMedia ? [{ id: defaultMedia.id, name: defaultMedia.name, image_url: defaultMedia.image_url }] : [] : savedMedia,
       };
     }),
   }));
