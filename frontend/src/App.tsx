@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import CountUp from 'react-countup';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Activity, ArrowLeft, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleAlert, Clock3, Dumbbell, Edit3, Eye, Flame, ImagePlus, KeyRound, LayoutDashboard, Maximize2, MoreHorizontal, Plus, Power, Search, ShieldCheck, Sparkles, Trash2, TrendingUp, UserRound, UserPlus, Users, X } from 'lucide-react';
 import { apiUrl, APP_BASE } from './lib/appBase';
@@ -111,10 +112,10 @@ function Dashboard() {
   return <Shell><div className="page dashboard-page">
     <header className="page-header"><div><p className="eyebrow">{todayLabel}</p><h1>{greeting}</h1><p>{language==='hr'?'Evo kako vaši klijenti napreduju ovaj tjedan.':'Here’s how your clients are moving this week.'}</p></div><button className="primary" onClick={()=>setShowAdd(true)}><Plus size={18}/>Add client</button></header>
     <section className="metrics">
-      <Metric icon={<Users/>} label="Active clients" value={String(clientCount)} detail={clientCount===0?metricCopy.noClients:todaySchedule.length?metricCopy.sessionsToday(todaySchedule.length):metricCopy.noSessionsToday} />
-      <Metric icon={<Check/>} label="Sessions completed" value={String(completed)} detail={completed?metricCopy.completed(completed):metricCopy.noCompleted} tone="success" />
-      <Metric icon={<Sparkles/>} label="Plans to review" value={String(plansToReview)} detail={plansToReview?metricCopy.plans(plansToReview):metricCopy.noPlans} tone="violet" />
-      <Metric icon={<CircleAlert/>} label="Need attention" value={String(needsAttention)} detail={needsAttention?metricCopy.attention(needsAttention):metricCopy.noAttention} tone="warning" />
+      <Metric icon={<Users/>} label="Active clients" value={clientCount} detail={clientCount===0?metricCopy.noClients:todaySchedule.length?metricCopy.sessionsToday(todaySchedule.length):metricCopy.noSessionsToday} countUp />
+      <Metric icon={<Check/>} label="Sessions completed" value={completed} detail={completed?metricCopy.completed(completed):metricCopy.noCompleted} tone="success" countUp />
+      <Metric icon={<Sparkles/>} label="Plans to review" value={plansToReview} detail={plansToReview?metricCopy.plans(plansToReview):metricCopy.noPlans} tone="violet" countUp />
+      <Metric icon={<CircleAlert/>} label="Need attention" value={needsAttention} detail={needsAttention?metricCopy.attention(needsAttention):metricCopy.noAttention} tone="warning" countUp />
     </section>
     {progressClient&&<section className="attention-strip"><div className="attention-icon"><TrendingUp size={20}/></div><div><strong>{language==='hr'?'Spremna je tjedna prilagodba':'Weekly adjustment ready'}</strong><p>{language==='hr'?`${progressClient.name} je dovršio/la treninge. Pregledajte plan za sljedeći korak.`:`${progressClient.name} completed recent sessions. Review the plan for the next progression.`}</p></div><Link to={`/clients/${progressClient.id}/plan`}>{language==='hr'?'Pregledaj plan':'Review plan'} <ChevronRight size={16}/></Link></section>}
     <section className="today-schedule"><div className="section-title"><div><h2>Today’s schedule</h2><p>{todaySchedule.length ? `${todaySchedule.length} sessions planned` : 'No sessions scheduled today'}</p></div><Link to="/schedule">Open calendar <ChevronRight size={16}/></Link></div><div className="today-schedule-list">{todaySchedule.length?todaySchedule.map(session=><Link key={session.id} to="/schedule"><b>{session.start_time}</b><i className={`status ${session.status==='missed'?'cancelled':session.status}`}>{session.status}</i><span><strong>{session.client_name}</strong><small>{session.title} · {session.duration} min</small></span><ChevronRight size={17}/></Link>):<Link className="today-empty" to="/schedule"><Plus size={16}/>Schedule a training session</Link>}</div></section>
@@ -128,7 +129,14 @@ function Dashboard() {
   </div>{showAdd&&<AddClient onClose={()=>setShowAdd(false)} onCreated={c=>{setClients(v=>[...(v||[]),c]);setShowAdd(false)}}/>}</Shell>
 }
 
-function Metric({icon,label,value,detail,tone='blue'}:{icon:React.ReactNode;label:string;value:string;detail:string;tone?:string}) { return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><p>{label}</p><strong>{value}</strong><small>{detail}</small></div></article> }
+const easeInOut = (time:number, start:number, change:number, duration:number) => {
+  const progress = time / (duration / 2);
+  if (progress < 1) return (change / 2) * progress * progress + start;
+  const easedProgress = progress - 1;
+  return (-change / 2) * (easedProgress * (easedProgress - 2) - 1) + start;
+};
+
+function Metric({icon,label,value,detail,tone='blue',countUp=false,suffix=''}:{icon:React.ReactNode;label:string;value:string|number;detail:string;tone?:string;countUp?:boolean;suffix?:string}) { return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><p>{label}</p><strong>{countUp&&typeof value==='number'?<CountUp key={value} end={value} duration={0.65} delay={0.2} suffix={suffix} easingFn={easeInOut} preserveValue/>:value}</strong><small>{detail}</small></div></article> }
 
 function ExerciseMediaLightbox({media,onClose}:{media:ExerciseMedia;onClose:()=>void}) {
   const {language,t}=useLanguage(); const name=localizeExerciseText(media.name,language);
@@ -205,7 +213,7 @@ function SessionModal({session,slot,clients,onClose,onSaved}:{session:CalendarSe
 }
 
 function ReportsPage() {
-  return <Shell active="reports"><div className="page nav-page"><header className="page-header"><div><p className="eyebrow">Progress reporting</p><h1>Reports</h1><p>Quick signals from your client roster, ready for coaching decisions.</p></div><button className="secondary">This week <ChevronDown size={16}/></button></header><section className="metrics report-metrics"><Metric icon={<Check/>} label="Completion rate" value="78%" detail="Up 6% from last week" tone="success"/><Metric icon={<Flame/>} label="Training minutes" value="342" detail="Across 7 sessions" tone="warning"/><Metric icon={<TrendingUp/>} label="Personal records" value="3" detail="This month" tone="violet"/><Metric icon={<UserRound/>} label="Check-ins due" value="2" detail="Jordan and Marcus" /></section><section className="report-panel"><div className="section-title"><div><h2>Coaching signals</h2><p>What deserves attention this week</p></div></div><div className="report-row"><i className="status completed">Ready to progress</i><div><strong>Maya Chen</strong><p>All sessions completed below target difficulty. Consider a 2.5% primary lift increase.</p></div><Link to="/clients/1/plan">Review plan <ChevronRight size={16}/></Link></div><div className="report-row"><i className="status attention">Follow up</i><div><strong>Jordan Blake</strong><p>Difficulty rose while session completion dipped. Check recovery before increasing volume.</p></div><Link to="/clients/2">Open profile <ChevronRight size={16}/></Link></div></section></div></Shell>
+  return <Shell active="reports"><div className="page nav-page"><header className="page-header"><div><p className="eyebrow">Progress reporting</p><h1>Reports</h1><p>Quick signals from your client roster, ready for coaching decisions.</p></div><button className="secondary">This week <ChevronDown size={16}/></button></header><section className="metrics report-metrics"><Metric icon={<Check/>} label="Completion rate" value={78} suffix="%" detail="Up 6% from last week" tone="success" countUp/><Metric icon={<Flame/>} label="Training minutes" value={342} detail="Across 7 sessions" tone="warning" countUp/><Metric icon={<TrendingUp/>} label="Personal records" value={3} detail="This month" tone="violet" countUp/><Metric icon={<UserRound/>} label="Check-ins due" value={2} detail="Jordan and Marcus" countUp/></section><section className="report-panel"><div className="section-title"><div><h2>Coaching signals</h2><p>What deserves attention this week</p></div></div><div className="report-row"><i className="status completed">Ready to progress</i><div><strong>Maya Chen</strong><p>All sessions completed below target difficulty. Consider a 2.5% primary lift increase.</p></div><Link to="/clients/1/plan">Review plan <ChevronRight size={16}/></Link></div><div className="report-row"><i className="status attention">Follow up</i><div><strong>Jordan Blake</strong><p>Difficulty rose while session completion dipped. Check recovery before increasing volume.</p></div><Link to="/clients/2">Open profile <ChevronRight size={16}/></Link></div></section></div></Shell>
 }
 
 function TrainerProfile() {

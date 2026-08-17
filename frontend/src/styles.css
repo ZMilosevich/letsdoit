@@ -169,3 +169,10 @@ body{font-size:var(--type-body);line-height:1.5}
 .portal-actions button:hover,.icon-action:hover{background:var(--accent-soft);color:var(--accent)}
 
 .metrics .metric small{display:block;line-height:1.3!important;padding-top:7px}
+
+@media(prefers-reduced-motion:no-preference){
+  .page,.client-portal,.login-page,.onboarding-page,.admin-shell{animation:page-enter .4s ease-in-out both}
+  @keyframes page-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+  .login-card,.onboarding-card{animation:auth-panel-enter .55s ease-in-out .12s both}
+  @keyframes auth-panel-enter{from{opacity:0;transform:translateY(12px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+}
