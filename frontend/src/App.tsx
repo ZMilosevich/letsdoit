@@ -103,7 +103,6 @@ function Dashboard() {
   const visible=useMemo(()=> (clients||[]).filter(c=>(filter==='all'||c.status===filter)&&c.name.toLowerCase().includes(query.toLowerCase())),[clients,query,filter]);
   const completed=(clients||[]).reduce((n,c)=>n+(c.sessions?.completed||0),0);
   const clientCount=clients?.length||0; const plansToReview=(clients||[]).filter(c=>c.status==='needs_plan').length; const needsAttention=(clients||[]).filter(c=>c.status==='attention'||c.status==='missed').length;
-  const metricCopy=language==='hr'?{noClients:'Još nema klijenata',noSessionsToday:'Danas nema zakazanih treninga',sessionsToday:(count:number)=>`${count} ${count===1?'trening zakazan danas':'treninga zakazano danas'}`,noCompleted:'Još nema završenih treninga',completed:(count:number)=>`${count} ${count===1?'završen trening':'završena treninga'}`,noPlans:'Nema planova za pregled',plans:(count:number)=>`${count} ${count===1?'plan čeka pregled':'planova čeka pregled'}`,noAttention:'Nema klijenata za praćenje',attention:(count:number)=>`${count} ${count===1?'klijent treba pažnju':'klijenta treba pažnju'}`}:{noClients:'No clients yet',noSessionsToday:'No sessions scheduled today',sessionsToday:(count:number)=>`${count} session${count===1?'':'s'} scheduled today`,noCompleted:'No completed sessions yet',completed:(count:number)=>`${count} completed session${count===1?'':'s'}`,noPlans:'No plans need review',plans:(count:number)=>`${count} plan${count===1?'':'s'} need review`,noAttention:'No client updates need attention',attention:(count:number)=>`${count} client${count===1?'':'s'} need attention`};
   const progressClient=(clients||[]).find(client=>(client.sessions?.completed||0)>0);
   const firstName=userFirstName(user);
   const hour=now.getHours(); const greetingLabel=language==='hr'?(hour<12?'Dobro jutro':hour<18?'Dobar dan':'Dobra večer'):(hour<12?'Good morning':hour<18?'Good afternoon':'Good evening');
@@ -112,10 +111,10 @@ function Dashboard() {
   return <Shell><div className="page dashboard-page">
     <header className="page-header"><div><p className="eyebrow">{todayLabel}</p><h1>{greeting}</h1><p>{language==='hr'?'Evo kako vaši klijenti napreduju ovaj tjedan.':'Here’s how your clients are moving this week.'}</p></div><button className="primary" onClick={()=>setShowAdd(true)}><Plus size={18}/>Add client</button></header>
     <section className="metrics">
-      <Metric icon={<Users/>} label="Active clients" value={clientCount} detail={clientCount===0?metricCopy.noClients:todaySchedule.length?metricCopy.sessionsToday(todaySchedule.length):metricCopy.noSessionsToday} countUp />
-      <Metric icon={<Check/>} label="Sessions completed" value={completed} detail={completed?metricCopy.completed(completed):metricCopy.noCompleted} tone="success" countUp />
-      <Metric icon={<Sparkles/>} label="Plans to review" value={plansToReview} detail={plansToReview?metricCopy.plans(plansToReview):metricCopy.noPlans} tone="violet" countUp />
-      <Metric icon={<CircleAlert/>} label="Need attention" value={needsAttention} detail={needsAttention?metricCopy.attention(needsAttention):metricCopy.noAttention} tone="warning" countUp />
+      <Metric icon={<Users/>} label="Active clients" value={clientCount} countUp />
+      <Metric icon={<Check/>} label="Sessions completed" value={completed} tone="success" countUp />
+      <Metric icon={<Sparkles/>} label="Plans to review" value={plansToReview} tone="violet" countUp />
+      <Metric icon={<CircleAlert/>} label="Need attention" value={needsAttention} tone="warning" countUp />
     </section>
     {progressClient&&<section className="attention-strip"><div className="attention-icon"><TrendingUp size={20}/></div><div><strong>{language==='hr'?'Spremna je tjedna prilagodba':'Weekly adjustment ready'}</strong><p>{language==='hr'?`${progressClient.name} je dovršio/la treninge. Pregledajte plan za sljedeći korak.`:`${progressClient.name} completed recent sessions. Review the plan for the next progression.`}</p></div><Link to={`/clients/${progressClient.id}/plan`}>{language==='hr'?'Pregledaj plan':'Review plan'} <ChevronRight size={16}/></Link></section>}
     <section className="today-schedule"><div className="section-title"><div><h2>Today’s schedule</h2><p>{todaySchedule.length ? `${todaySchedule.length} sessions planned` : 'No sessions scheduled today'}</p></div><Link to="/schedule">Open calendar <ChevronRight size={16}/></Link></div><div className="today-schedule-list">{todaySchedule.length?todaySchedule.map(session=><Link key={session.id} to="/schedule"><b>{session.start_time}</b><i className={`status ${session.status==='missed'?'cancelled':session.status}`}>{session.status}</i><span><strong>{session.client_name}</strong><small>{session.title} · {session.duration} min</small></span><ChevronRight size={17}/></Link>):<Link className="today-empty" to="/schedule"><Plus size={16}/>Schedule a training session</Link>}</div></section>
@@ -136,7 +135,7 @@ const easeInOut = (time:number, start:number, change:number, duration:number) =>
   return (-change / 2) * (easedProgress * (easedProgress - 2) - 1) + start;
 };
 
-function Metric({icon,label,value,detail,tone='blue',countUp=false,suffix=''}:{icon:React.ReactNode;label:string;value:string|number;detail:string;tone?:string;countUp?:boolean;suffix?:string}) { return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><p>{label}</p><strong>{countUp&&typeof value==='number'?<CountUp key={value} end={value} duration={0.65} delay={0.2} suffix={suffix} easingFn={easeInOut} preserveValue/>:value}</strong><small>{detail}</small></div></article> }
+function Metric({icon,label,value,detail,tone='blue',countUp=false,suffix=''}:{icon:React.ReactNode;label:string;value:string|number;detail?:string;tone?:string;countUp?:boolean;suffix?:string}) { return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><p>{label}</p><strong>{countUp&&typeof value==='number'?<CountUp key={value} end={value} duration={0.65} delay={0.2} suffix={suffix} easingFn={easeInOut} preserveValue/>:value}</strong>{detail&&<small>{detail}</small>}</div></article> }
 
 function usePopupClose(onClose:()=>void) {
   const [closing,setClosing]=useState(false);
