@@ -127,6 +127,7 @@ body{font-size:var(--type-body);line-height:1.5}
 .report-metrics .metric small{display:block;line-height:1.25!important;padding-top:7px}
 .report-row{grid-template-columns:180px minmax(0,1fr) auto;column-gap:28px}
 .report-row>.status{width:max-content;max-width:100%;justify-self:start;text-transform:none}
+.report-period-control{position:relative;flex:0 0 auto}.report-period-control select{appearance:none;color:var(--accent);padding-right:42px}.report-period-control svg{position:absolute;right:16px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--accent)}
 @media(max-width:780px){
   .report-row{grid-template-columns:minmax(0,1fr) auto;column-gap:18px;row-gap:12px}
   .report-row>.status{grid-column:1/-1}

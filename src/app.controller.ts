@@ -13,6 +13,35 @@ const GOOGLE_CLIENT_ID = '104438311483-qv0m9d3lmuq29nbefgo9bjuagg448ft7.apps.goo
 const calendarSelect = `SELECT sessions.*, clients.name AS client_name, clients.initials AS client_initials
   FROM sessions JOIN clients ON clients.id = sessions.client_id`;
 
+type ReportPeriod = 'this_week' | 'last_week' | 'last_30_days';
+
+function reportWindow(value?: string): { period: ReportPeriod; start: string; end: string } {
+  const period: ReportPeriod = value === 'last_week' || value === 'last_30_days' ? value : 'this_week';
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+
+  if (period === 'last_30_days') {
+    const start = new Date(today);
+    start.setUTCDate(start.getUTCDate() - 29);
+    const end = new Date(today);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return { period, start: isoDay(start), end: isoDay(end) };
+  }
+
+  const monday = new Date(today);
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  if (period === 'last_week') {
+    const start = new Date(monday);
+    start.setUTCDate(start.getUTCDate() - 7);
+    return { period, start: isoDay(start), end: isoDay(monday) };
+  }
+
+  const end = new Date(monday);
+  end.setUTCDate(end.getUTCDate() + 7);
+  return { period, start: isoDay(monday), end: isoDay(end) };
+}
+
 function sessionOverlap(clientId: number, date: string, startTime: string, duration: number, excludeId?: number): any | undefined {
   const start = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3, 5));
   const end = start + duration;
@@ -280,6 +309,62 @@ export class AppController {
     const today = new Date().toISOString().slice(0, 10);
     const todaySchedule = user.role === 'admin' ? db.prepare(`${calendarSelect} WHERE sessions.scheduled_date = ? ORDER BY sessions.start_time`).all(today) : db.prepare(`${calendarSelect} WHERE sessions.scheduled_date = ? AND clients.trainer_id=? ORDER BY sessions.start_time`).all(today,user.id);
     return { clients: clients.map((client) => ({ ...client, sessions: summaries.get(client.id) || {}, plan: plans.find((plan) => plan.client_id === client.id) || null, delivery: deliveries.find((delivery) => delivery.client_id === client.id) || null })), todaySchedule };
+  }
+
+  @Get('reports')
+  getReports(@Req() request: FastifyRequest, @Query('period') requestedPeriod?: string) {
+    const user = requireTrainer(request);
+    const window = reportWindow(requestedPeriod);
+    const clients = (user.role === 'admin'
+      ? db.prepare('SELECT id, name, status FROM clients ORDER BY name').all()
+      : db.prepare('SELECT id, name, status FROM clients WHERE trainer_id = ? ORDER BY name').all(user.id)) as { id: number; name: string; status: string }[];
+    const clientIds = new Set(clients.map((client) => client.id));
+    const sessions = (user.role === 'admin'
+      ? db.prepare(`${calendarSelect} WHERE sessions.scheduled_date >= ? AND sessions.scheduled_date < ?`).all(window.start, window.end)
+      : db.prepare(`${calendarSelect} WHERE sessions.scheduled_date >= ? AND sessions.scheduled_date < ? AND clients.trainer_id = ?`).all(window.start, window.end, user.id)) as any[];
+    const latestPlans = db.prepare("SELECT client_id, status FROM plans WHERE id IN (SELECT MAX(id) FROM plans GROUP BY client_id)").all() as { client_id: number; status: string }[];
+    const draftClientIds = new Set(latestPlans.filter((plan) => plan.status === 'draft' && clientIds.has(plan.client_id)).map((plan) => plan.client_id));
+    const sessionSummary = new Map<number, { completed: number; missed: number; duration: number }>();
+
+    sessions.filter((session) => session.status !== 'cancelled').forEach((session) => {
+      const current = sessionSummary.get(session.client_id) || { completed: 0, missed: 0, duration: 0 };
+      if (session.status === 'completed') {
+        current.completed += 1;
+        current.duration += Number(session.duration) || 0;
+      }
+      if (session.status === 'missed') current.missed += 1;
+      sessionSummary.set(session.client_id, current);
+    });
+
+    const totals = [...sessionSummary.values()].reduce((result, summary) => ({
+      completed: result.completed + summary.completed,
+      missed: result.missed + summary.missed,
+      duration: result.duration + summary.duration,
+    }), { completed: 0, missed: 0, duration: 0 });
+    const reviewed = new Set<number>();
+    const signals: { client_id: number; client_name: string; kind: 'progress' | 'attention' | 'review'; sessions_completed: number; missed_sessions: number }[] = [];
+    const addSignal = (client: { id: number; name: string }, kind: 'progress' | 'attention' | 'review') => {
+      if (reviewed.has(client.id) || signals.length === 3) return;
+      const summary = sessionSummary.get(client.id) || { completed: 0, missed: 0, duration: 0 };
+      reviewed.add(client.id);
+      signals.push({ client_id: client.id, client_name: client.name, kind, sessions_completed: summary.completed, missed_sessions: summary.missed });
+    };
+
+    clients.filter((client) => draftClientIds.has(client.id)).forEach((client) => addSignal(client, 'review'));
+    clients.filter((client) => client.status === 'attention' || client.status === 'missed' || (sessionSummary.get(client.id)?.missed || 0) > 0).forEach((client) => addSignal(client, 'attention'));
+    clients.filter((client) => (sessionSummary.get(client.id)?.completed || 0) > 0).forEach((client) => addSignal(client, 'progress'));
+
+    return {
+      period: window.period,
+      range: { start: window.start, end: window.end },
+      metrics: {
+        completion_rate: totals.completed + totals.missed ? Math.round((totals.completed / (totals.completed + totals.missed)) * 100) : 0,
+        training_minutes: totals.duration,
+        plans_to_review: draftClientIds.size,
+        needs_attention: clients.filter((client) => client.status === 'attention' || client.status === 'missed' || (sessionSummary.get(client.id)?.missed || 0) > 0).length,
+      },
+      signals,
+    };
   }
 
   @Get('schedule')

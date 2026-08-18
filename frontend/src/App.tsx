@@ -15,6 +15,9 @@ type Session = { id:number; title:string; scheduled_date:string; status:string; 
 type Progress = { id:number; recorded_date:string; weight:number; waist:number; body_fat:number; squat_max:number; feedback:string };
 type ClientDetail = { client:Client; plan:Plan|null; delivery:Delivery|null; sessions:Session[]; progress:Progress[]; analysis:{completion:number;avgDifficulty:number;suggestion:string} };
 type CalendarSession = { id:number; client_id:number; client_name:string; client_initials:string; title:string; scheduled_date:string; start_time:string; training_type:string; status:'upcoming'|'completed'|'cancelled'|'missed'; duration:number; notes:string; recurrence_rule:string };
+type ReportPeriod = 'this_week'|'last_week'|'last_30_days';
+type ReportSignal = { client_id:number; client_name:string; kind:'progress'|'attention'|'review'; sessions_completed:number; missed_sessions:number };
+type ReportData = { period:ReportPeriod; range:{start:string;end:string}; metrics:{completion_rate:number;training_minutes:number;plans_to_review:number;needs_attention:number}; signals:ReportSignal[] };
 
 const statusLabel: Record<string,string> = { on_track:'On track', attention:'Needs attention', needs_plan:'Plan needed', missed:'Missed sessions' };
 const deliveryLabel: Record<string,string> = { scheduled:'Plan scheduled', sent:'Plan sent', viewed:'Plan viewed', confirmed:'Plan confirmed' };
@@ -135,7 +138,7 @@ const easeInOut = (time:number, start:number, change:number, duration:number) =>
   return (-change / 2) * (easedProgress * (easedProgress - 2) - 1) + start;
 };
 
-function Metric({icon,label,value,detail,tone='blue',countUp=false,suffix=''}:{icon:React.ReactNode;label:string;value:string|number;detail?:string;tone?:string;countUp?:boolean;suffix?:string}) { return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><p>{label}</p><strong>{countUp&&typeof value==='number'?<CountUp key={value} end={value} duration={0.65} delay={0.2} suffix={suffix} easingFn={easeInOut} preserveValue/>:value}</strong>{detail&&<small>{detail}</small>}</div></article> }
+function Metric({icon,label,value,detail,tone='blue',countUp=false,suffix=''}:{icon:React.ReactNode;label:string;value:string|number;detail?:string;tone?:string;countUp?:boolean;suffix?:string}) { return <article className="metric"><span className={`metric-icon ${tone}`}>{icon}</span><div><p>{label}</p><strong>{countUp&&typeof value==='number'?<CountUp end={value} duration={0.65} delay={0.2} suffix={suffix} easingFn={easeInOut} preserveValue/>:value}</strong>{detail&&<small>{detail}</small>}</div></article> }
 
 function usePopupClose(onClose:()=>void) {
   const [closing,setClosing]=useState(false);
@@ -223,7 +226,51 @@ function SessionModal({session,slot,clients,onClose,onSaved}:{session:CalendarSe
 }
 
 function ReportsPage() {
-  return <Shell active="reports"><div className="page nav-page"><header className="page-header"><div><p className="eyebrow">Progress reporting</p><h1>Reports</h1><p>Quick signals from your client roster, ready for coaching decisions.</p></div><button className="secondary">This week <ChevronDown size={16}/></button></header><section className="metrics report-metrics"><Metric icon={<Check/>} label="Completion rate" value={78} suffix="%" detail="Up 6% from last week" tone="success" countUp/><Metric icon={<Flame/>} label="Training minutes" value={342} detail="Across 7 sessions" tone="warning" countUp/><Metric icon={<TrendingUp/>} label="Personal records" value={3} detail="This month" tone="violet" countUp/><Metric icon={<UserRound/>} label="Check-ins due" value={2} detail="Jordan and Marcus" countUp/></section><section className="report-panel"><div className="section-title"><div><h2>Coaching signals</h2><p>What deserves attention this week</p></div></div><div className="report-row"><i className="status completed">Ready to progress</i><div><strong>Maya Chen</strong><p>All sessions completed below target difficulty. Consider a 2.5% primary lift increase.</p></div><Link to="/clients/1/plan">Review plan <ChevronRight size={16}/></Link></div><div className="report-row"><i className="status attention">Follow up</i><div><strong>Jordan Blake</strong><p>Difficulty rose while session completion dipped. Check recovery before increasing volume.</p></div><Link to="/clients/2">Open profile <ChevronRight size={16}/></Link></div></section></div></Shell>
+  const {language}=useLanguage();
+  const [period,setPeriod]=useState<ReportPeriod>('this_week');
+  const [report,setReport]=useState<ReportData|null>(null);
+  const [error,setError]=useState('');
+  const [reloadKey,setReloadKey]=useState(0);
+  const copy=language==='hr'?{
+    eyebrow:'Izvještavanje o napretku', title:'Izvještaji', intro:'Brzi pokazatelji iz vaše liste klijenata, spremni za odluke trenera.', choosePeriod:'Odaberite razdoblje', thisWeek:'Ovaj tjedan', lastWeek:'Prošli tjedan', last30:'Posljednjih 30 dana', completion:'Stopa završetka', minutes:'Minute treninga', plans:'Planovi za pregled', attention:'Potrebna pažnja', signals:'Trenerski pokazatelji', signalsIntro:'Što zaslužuje pažnju u odabranom razdoblju', ready:'Spremno za napredovanje', followUp:'Potrebno praćenje', review:'Potreban pregled plana', reviewPlan:'Pregledaj plan', profile:'Otvori profil', noSignals:'Nema novih pokazatelja za odabrano razdoblje.', retry:'Pokušajte ponovno', loadError:'Izvještaj nije moguće učitati.', progressMessage:(count:number)=>`Dovršeno: ${count} treninga u odabranom razdoblju. Pregledajte sljedeći korak.`, attentionMessage:(count:number)=>count?`Propušteno: ${count} treninga u odabranom razdoblju. Provjerite oporavak i plan.`:'Klijent je označen za praćenje. Provjerite oporavak i plan.', reviewMessage:'Plan još čeka pregled prije sljedećeg treninga.'
+  }:{
+    eyebrow:'Progress reporting', title:'Reports', intro:'Quick signals from your client roster, ready for coaching decisions.', choosePeriod:'Choose period', thisWeek:'This week', lastWeek:'Last week', last30:'Last 30 days', completion:'Completion rate', minutes:'Training minutes', plans:'Plans to review', attention:'Need attention', signals:'Coaching signals', signalsIntro:'What deserves attention in the selected period', ready:'Ready to progress', followUp:'Follow up', review:'Plan review needed', reviewPlan:'Review plan', profile:'Open profile', noSignals:'No new signals for the selected period.', retry:'Try again', loadError:'The report could not be loaded.', progressMessage:(count:number)=>`Completed: ${count} sessions in the selected period. Review the next step.`, attentionMessage:(count:number)=>count?`Missed: ${count} sessions in the selected period. Check recovery and the plan.`:'This client needs a follow-up. Check recovery and the plan.', reviewMessage:'A plan is still waiting for review before the next session.'
+  };
+
+  useEffect(()=>{
+    let active=true;
+    setError('');
+    fetch(apiUrl(`reports?period=${period}`)).then(async response=>({ok:response.ok,data:await response.json()})).then(({ok,data})=>{
+      if(!active)return;
+      if(!ok)throw Error(data?.message||copy.loadError);
+      setReport(data);
+    }).catch((reason)=>{if(active)setError(reason.message||copy.loadError)});
+    return()=>{active=false};
+  },[period,language,reloadKey]);
+
+  const signalMeta=(signal:ReportSignal)=>signal.kind==='progress'
+    ? {status:'completed',label:copy.ready,message:copy.progressMessage(signal.sessions_completed),to:`/clients/${signal.client_id}/plan`,action:copy.reviewPlan}
+    : signal.kind==='attention'
+      ? {status:'attention',label:copy.followUp,message:copy.attentionMessage(signal.missed_sessions),to:`/clients/${signal.client_id}`,action:copy.profile}
+      : {status:'needs_plan',label:copy.review,message:copy.reviewMessage,to:`/clients/${signal.client_id}/plan`,action:copy.reviewPlan};
+
+  return <Shell active="reports"><div className="page nav-page">
+    <header className="page-header"><div><p className="eyebrow">{copy.eyebrow}</p><h1>{copy.title}</h1><p>{copy.intro}</p></div><div className="report-period-control"><select className="secondary" aria-label={copy.choosePeriod} value={period} onChange={event=>setPeriod(event.target.value as ReportPeriod)}><option value="this_week">{copy.thisWeek}</option><option value="last_week">{copy.lastWeek}</option><option value="last_30_days">{copy.last30}</option></select><ChevronDown size={16}/></div></header>
+    <div className="report-results">
+    <section className="metrics report-metrics">
+      <Metric icon={<Check/>} label={copy.completion} value={report?.metrics.completion_rate??'—'} suffix="%" tone="success" countUp/>
+      <Metric icon={<Flame/>} label={copy.minutes} value={report?.metrics.training_minutes??'—'} tone="warning" countUp/>
+      <Metric icon={<Sparkles/>} label={copy.plans} value={report?.metrics.plans_to_review??'—'} tone="violet" countUp/>
+      <Metric icon={<UserRound/>} label={copy.attention} value={report?.metrics.needs_attention??'—'} countUp/>
+    </section>
+    <section className="report-panel"><div className="section-title"><div><h2>{copy.signals}</h2><p>{copy.signalsIntro}</p></div></div>
+      {error&&<div className="error-state">{error} <button onClick={()=>setReloadKey(current=>current+1)}>{copy.retry}</button></div>}
+      {!report&&!error&&<div className="skeleton-list"><i/><i/></div>}
+      {report?.signals.map(signal=>{const meta=signalMeta(signal);return <div className="report-row" key={`${signal.kind}-${signal.client_id}`}><i className={`status ${meta.status}`}>{meta.label}</i><div><strong>{signal.client_name}</strong><p>{meta.message}</p></div><Link to={meta.to}>{meta.action} <ChevronRight size={16}/></Link></div>})}
+      {report&&report.signals.length===0&&<div className="empty-state"><TrendingUp size={26}/><strong>{copy.noSignals}</strong></div>}
+    </section>
+    </div>
+  </div></Shell>
 }
 
 function TrainerProfile() {
@@ -246,11 +293,11 @@ type AuthUser = { id:number; email:string; display_name:string; first_name:strin
 const destinationFor = (user:Pick<AuthUser,'role'|'onboarding_completed'>) => !user.onboarding_completed && user.role !== 'admin' ? '/onboarding' : user.role === 'admin' ? '/admin' : user.role === 'client' ? '/client' : '/';
 
 function Login() {
-  const navigate=useNavigate(); const location=useLocation(); const {language,setLanguage}=useLanguage(); const [email,setEmail]=useState('trainer@letsdoit.app'); const [password,setPassword]=useState('Trainer2026!'); const [error,setError]=useState(''); const [saving,setSaving]=useState(false);
+  const navigate=useNavigate(); const location=useLocation(); const {language,setLanguage}=useLanguage(); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [error,setError]=useState(''); const [saving,setSaving]=useState(false);
   useEffect(()=>{const params=new URLSearchParams(location.search);const code=params.get('code');const ssoError=params.get('sso_error');if(ssoError){setError('Google sign-in was not completed.');return;}if(!code)return;setSaving(true);fetch(apiUrl('auth/exchange'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})}).then(async response=>({ok:response.ok,data:await response.json()})).then(({ok,data})=>{if(!ok){setError(data.message||'Google sign-in expired.');setSaving(false);return;}localStorage.setItem('letsdoit-session',data.token);setLanguage(data.user.preferred_language==='en'?'en':'hr');navigate(destinationFor(data.user),{replace:true});}).catch(()=>{setError('Google sign-in could not be completed.');setSaving(false);});},[location.search,navigate,setLanguage]);
   async function submit(event:FormEvent){event.preventDefault();setSaving(true);setError('');const response=await fetch(apiUrl('auth/login'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});const data=await response.json();setSaving(false);if(!response.ok){setError(data.message||'Unable to sign in.');return;}localStorage.setItem('letsdoit-session',data.token);setLanguage(data.user.preferred_language==='en'?'en':'hr');navigate(destinationFor(data.user),{replace:true});}
-  const copy=language==='hr'?{eyebrow:'Dobro došli',title:'Vaš trening, na jednom mjestu',body:'Prijavite se za svoj osobni raspored, plan i napredak.',email:'E-pošta',password:'Lozinka',submit:'Prijavi se',demo:'Demo računi: trainer@letsdoit.app ili maya@example.com'}:{eyebrow:'Welcome back',title:'Your training, in one place',body:'Sign in to reach your personal schedule, plan, and progress.',email:'Email',password:'Password',submit:'Sign in',demo:'Demo accounts: trainer@letsdoit.app or maya@example.com'};
-  return <main className="login-page"><section className="login-card"><Link className="portal-brand login-brand" to="/login"><Activity size={20}/>LetsDoIt</Link><div className="language-choice login-language"><button className={language==='hr'?'selected':''} onClick={()=>setLanguage('hr')}>Hrvatski</button><button className={language==='en'?'selected':''} onClick={()=>setLanguage('en')}>English</button></div><p className="eyebrow">{copy.eyebrow}</p><h1>{copy.title}</h1><p>{copy.body}</p><a className="google-button" href={apiUrl('auth/google')}>Continue with Google</a><div className="login-divider"><span>or</span></div><form onSubmit={submit}><Field label={copy.email}><input autoFocus type="email" value={email} onChange={event=>setEmail(event.target.value)} required/></Field><Field label={copy.password}><input type="password" value={password} onChange={event=>setPassword(event.target.value)} required/></Field>{error&&<p className="login-error">{error}</p>}<button className="primary" disabled={saving}>{copy.submit}<ChevronRight size={17}/></button></form><small>{copy.demo} · Trainer2026! / Client2026!</small></section></main>
+  const copy=language==='hr'?{eyebrow:'Dobro došli',title:'Vaš trening, na jednom mjestu',body:'Prijavite se za svoj osobni raspored, plan i napredak.',email:'E-pošta',password:'Lozinka',submit:'Prijavi se'}:{eyebrow:'Welcome back',title:'Your training, in one place',body:'Sign in to reach your personal schedule, plan, and progress.',email:'Email',password:'Password',submit:'Sign in'};
+  return <main className="login-page"><section className="login-card"><Link className="portal-brand login-brand" to="/login"><Activity size={20}/>LetsDoIt</Link><div className="language-choice login-language"><button className={language==='hr'?'selected':''} onClick={()=>setLanguage('hr')}>Hrvatski</button><button className={language==='en'?'selected':''} onClick={()=>setLanguage('en')}>English</button></div><p className="eyebrow">{copy.eyebrow}</p><h1>{copy.title}</h1><p>{copy.body}</p><a className="google-button" href={apiUrl('auth/google')}>Continue with Google</a><div className="login-divider"><span>or</span></div><form onSubmit={submit}><Field label={copy.email}><input autoFocus type="email" value={email} onChange={event=>setEmail(event.target.value)} required/></Field><Field label={copy.password}><input type="password" value={password} onChange={event=>setPassword(event.target.value)} required/></Field>{error&&<p className="login-error">{error}</p>}<button className="primary" disabled={saving}>{copy.submit}<ChevronRight size={17}/></button></form></section></main>
 }
 
 function AuthGate({children,role}:{children:React.ReactNode;role:'admin'|'trainer'|'client'}) {
