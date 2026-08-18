@@ -73,6 +73,13 @@ body{font-size:var(--type-body);line-height:1.5}
   .modal-title h2{font-size:22px}
 }
 
+/* Client bulk selection */
+.bulk-bar{position:sticky;top:13px;z-index:5;display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:10px 11px 10px 13px;background:linear-gradient(115deg,#f8fcf9,#eef7f0);border:1px solid #c8decf;border-radius:13px;color:#285d38;box-shadow:0 10px 24px rgb(28 78 43 / .10)}
+.bulk-bar>span{display:flex;align-items:center;gap:8px;margin-right:auto;font-size:13px;font-weight:700}.bulk-bar>span:before{content:'✓';width:23px;height:23px;border-radius:50%;display:grid;place-items:center;background:#d8f0de;color:#176b38;font-size:13px}
+.bulk-bar .primary{min-height:36px;background:#1d7540;color:#fff;filter:none;box-shadow:none}.bulk-bar .primary:hover{background:#166534}.bulk-bar .primary:disabled{opacity:.65}
+.bulk-bar>button:last-child{width:36px;height:36px;border:1px solid #d6e4d9;border-radius:9px;background:#fff;color:#52705a;display:grid;place-items:center;cursor:pointer}.bulk-bar>button:last-child:hover{background:#f2f8f3;color:var(--accent)}
+.directory-card{transition:none}.directory-card.selected{border-color:#8ab999;background:#f8fcf8;box-shadow:0 9px 20px rgb(32 91 50 / .10);transform:translateY(-1px)}.directory-card.selected .select-client span{background:#1d7540;border-color:#1d7540;color:#fff}
+
 @media(max-width:520px){
   .page,.admin-page{padding:22px 16px 48px}
   .page h1,.admin-header h1{font-size:26px}
@@ -199,6 +206,7 @@ button:not(:disabled),a[href]{cursor:pointer}
 @media(prefers-reduced-motion:no-preference){
   .page,.client-portal,.login-page,.onboarding-page,.admin-shell{animation:page-enter .4s ease-in-out both}
   @keyframes page-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+  .bulk-bar{animation:bulk-bar-enter .28s ease-in-out both}.bulk-bar.is-closing{animation:bulk-bar-exit .22s ease-in-out both;pointer-events:none}.bulk-bar>span{animation:bulk-count .2s ease-in-out both}.directory-card{transition:border-color .22s ease-in-out,background-color .22s ease-in-out,box-shadow .22s ease-in-out,transform .22s ease-in-out}.directory-card.selected{animation:directory-card-select .24s ease-in-out both}.directory-card.selected .select-client span{animation:selection-check .22s ease-in-out both}@keyframes bulk-bar-enter{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}@keyframes bulk-bar-exit{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-4px)}}@keyframes bulk-count{from{opacity:.55;transform:translateX(-3px)}to{opacity:1;transform:translateX(0)}}@keyframes directory-card-select{0%{transform:translateY(0) scale(1)}60%{transform:translateY(-2px) scale(1.006)}100%{transform:translateY(-1px) scale(1)}}@keyframes selection-check{from{transform:scale(.72)}to{transform:scale(1)}}
   .login-card,.onboarding-card{animation:auth-panel-enter .55s ease-in-out .12s both}
   @keyframes auth-panel-enter{from{opacity:0;transform:translateY(12px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
   .modal-backdrop{animation:popup-backdrop-enter .22s ease-in-out both}
