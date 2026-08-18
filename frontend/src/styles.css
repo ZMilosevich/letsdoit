@@ -178,6 +178,18 @@ button:not(:disabled),a[href]{cursor:pointer}
 :root{--surface-drop-shadow:drop-shadow(0px 6px 4px rgb(0 0 0 / 0.05))}
 .metrics,.attention-strip,.today-schedule,.client-section,.tab-panel,.workout-editor,.directory-tools,.directory-grid,.week-calendar,.month-calendar,.day-calendar,.report-panel,.summary-grid,.profile-columns,.plan-banner{filter:var(--surface-drop-shadow)}
 
+@media(max-width:520px){
+  .eyebrow{font-size:11px!important}
+  .section-head h2,.section-title h2,.editor-head h2{font-size:20px;line-height:1.25}
+  .section-head p,.section-title p,.editor-head p{font-size:14px;line-height:1.4}
+  .directory-grid{grid-template-columns:1fr;gap:12px}
+  .directory-tools{padding:11px 12px}
+  .directory-card>a{padding:16px}
+  .directory-card h2{font-size:17px;line-height:1.25}
+  .directory-card p{font-size:14px;line-height:1.4}
+  .directory-card small{font-size:12px;margin-top:8px}
+}
+
 @media(prefers-reduced-motion:no-preference){
   .page,.client-portal,.login-page,.onboarding-page,.admin-shell{animation:page-enter .4s ease-in-out both}
   @keyframes page-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
