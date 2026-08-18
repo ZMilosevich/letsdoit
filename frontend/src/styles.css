@@ -174,7 +174,8 @@ button:not(:disabled),a[href]{cursor:pointer}
 
 .primary,.secondary{box-shadow:rgba(100,100,111,.3) 0 5px 5px 0}
 
-.metrics,.attention-strip,.today-schedule,.client-section,.directory-tools,.directory-grid,.week-calendar,.month-calendar,.day-calendar,.report-panel{filter:drop-shadow(0px 6px 4px rgb(0,0,0,0.05))}
+:root{--surface-drop-shadow:drop-shadow(0px 6px 4px rgb(0 0 0 / 0.05))}
+.metrics,.attention-strip,.today-schedule,.client-section,.tab-panel,.workout-editor,.directory-tools,.directory-grid,.week-calendar,.month-calendar,.day-calendar,.report-panel,.summary-grid,.profile-columns,.plan-banner{filter:var(--surface-drop-shadow)}
 
 @media(prefers-reduced-motion:no-preference){
   .page,.client-portal,.login-page,.onboarding-page,.admin-shell{animation:page-enter .4s ease-in-out both}
