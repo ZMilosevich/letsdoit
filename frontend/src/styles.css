@@ -190,6 +190,11 @@ button:not(:disabled),a[href]{cursor:pointer}
   .directory-card small{font-size:12px;margin-top:8px}
 }
 
+@media(max-width:780px){
+  .sidebar,.admin-sidebar,.client-portal>header{position:sticky;top:0;z-index:30}
+  .sidebar,.admin-sidebar{box-shadow:0 2px 14px rgb(12 30 19 / .18)}
+}
+
 @media(prefers-reduced-motion:no-preference){
   .page,.client-portal,.login-page,.onboarding-page,.admin-shell{animation:page-enter .4s ease-in-out both}
   @keyframes page-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
