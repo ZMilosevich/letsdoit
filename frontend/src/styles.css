@@ -183,4 +183,14 @@ button:not(:disabled),a[href]{cursor:pointer}
   @keyframes page-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
   .login-card,.onboarding-card{animation:auth-panel-enter .55s ease-in-out .12s both}
   @keyframes auth-panel-enter{from{opacity:0;transform:translateY(12px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+  .modal-backdrop{animation:popup-backdrop-enter .22s ease-in-out both}
+  .modal,.exercise-lightbox{animation:popup-enter .3s ease-in-out both}
+  .trainer-popover{animation:popover-enter .22s ease-in-out both;transform-origin:bottom left}
+  body.popup-closing .modal-backdrop,.modal-backdrop.is-closing{animation:popup-backdrop-exit .22s ease-in-out both}
+  body.popup-closing .modal-backdrop>.modal,body.popup-closing .modal-backdrop>.exercise-lightbox,.modal-backdrop.is-closing>.modal,.modal-backdrop.is-closing>.exercise-lightbox{animation:popup-exit .22s ease-in-out both}
+  @keyframes popup-backdrop-enter{from{opacity:0}to{opacity:1}}
+  @keyframes popup-enter{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes popover-enter{from{opacity:0;transform:translateY(5px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes popup-backdrop-exit{from{opacity:1}to{opacity:0}}
+  @keyframes popup-exit{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(6px) scale(.985)}}
 }
