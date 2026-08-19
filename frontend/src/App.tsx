@@ -60,10 +60,10 @@ function Shell({ children, active='dashboard' }:{children:React.ReactNode;active
     <aside className="sidebar">
       <Link to="/" className="brand"><span className="brand-mark"><Activity size={21}/></span><span>LetsDoIt</span></Link>
       <nav>
-        <NavLink className={active==='dashboard'?'active':''} to="/"><LayoutDashboard size={19}/>Overview</NavLink>
-        <NavLink className={active==='clients'?'active':''} to="/clients"><Users size={19}/>Clients</NavLink>
-        <NavLink className={active==='schedule'?'active':''} to="/schedule"><CalendarDays size={19}/>Schedule</NavLink>
-        <NavLink className={active==='reports'?'active':''} to="/reports"><BarChart3 size={19}/>Reports</NavLink>
+        <NavLink className={active==='dashboard'?'active':''} to="/"><LayoutDashboard size={19}/><span>Overview</span></NavLink>
+        <NavLink className={active==='clients'?'active':''} to="/clients"><Users size={19}/><span>Clients</span></NavLink>
+        <NavLink className={active==='schedule'?'active':''} to="/schedule"><CalendarDays size={19}/><span>Schedule</span></NavLink>
+        <NavLink className={active==='reports'?'active':''} to="/reports"><BarChart3 size={19}/><span>Reports</span></NavLink>
       </nav>
       <TrainerMenu />
     </aside>
@@ -99,7 +99,7 @@ function TrainerMenu() {
   useEffect(()=>{if(!open)return;const close=(event:PointerEvent)=>{if(!menuRef.current?.contains(event.target as Node))setOpen(false)};window.addEventListener('pointerdown',close);return()=>window.removeEventListener('pointerdown',close)},[open]);
   async function logout(){await fetch(apiUrl('auth/logout'),{method:'POST'});localStorage.removeItem('letsdoit-session');navigate('/login',{replace:true});}
   const name=user?.display_name || (language==='hr'?'Trener':'Trainer');
-  return <div className="trainer-menu" ref={menuRef}><button className="sidebar-foot trainer-trigger" aria-label="Open trainer menu" aria-expanded={open} onClick={()=>setOpen(!open)}><div className="avatar small">{user?.profile_photo_url?<img src={user.profile_photo_url} alt=""/>:userInitials(user)}</div><div><strong>{name}</strong><span>{language==='hr'?'Trener':'Trainer'}</span></div><ChevronDown size={16}/></button>{open&&<div className="trainer-popover"><Link to="/profile" onClick={()=>setOpen(false)}><UserRound size={16}/>Trainer profile</Link><button className="popover-button" onClick={logout}>Sign out</button><div className="language-row"><span>Language</span><div><button className={language==='hr'?'active':''} onClick={()=>setLanguage('hr')}>HR</button><button className={language==='en'?'active':''} onClick={()=>setLanguage('en')}>EN</button></div></div><div className="theme-row"><span>{language==='hr'?'Tema':'Theme'}</span><ThemeChoice/></div></div>}</div>
+  return <div className="trainer-menu" ref={menuRef}><button className="sidebar-foot trainer-trigger" aria-label="Open trainer menu" aria-expanded={open} onClick={()=>setOpen(!open)}><UserRound className="mobile-user-icon" size={20}/><div className="avatar small">{user?.profile_photo_url?<img src={user.profile_photo_url} alt=""/>:userInitials(user)}</div><div><strong>{name}</strong><span>{language==='hr'?'Trener':'Trainer'}</span></div><ChevronDown size={16}/></button>{open&&<div className="trainer-popover"><Link to="/profile" onClick={()=>setOpen(false)}><UserRound size={16}/>Trainer profile</Link><button className="popover-button" onClick={logout}>Sign out</button><div className="language-row"><span>Language</span><div><button className={language==='hr'?'active':''} onClick={()=>setLanguage('hr')}>HR</button><button className={language==='en'?'active':''} onClick={()=>setLanguage('en')}>EN</button></div></div><div className="theme-row"><span>{language==='hr'?'Tema':'Theme'}</span><ThemeChoice/></div></div>}</div>
 }
 
 function Dashboard() {

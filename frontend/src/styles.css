@@ -322,3 +322,16 @@ button:not(:disabled),a[href]{cursor:pointer}
   @keyframes language-choice-select{from{transform:scale(.95)}to{transform:scale(1)}}
   @keyframes language-copy-enter{from{opacity:.55;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
 }
+
+.mobile-user-icon{display:none}
+@media(max-width:780px){
+  .sidebar nav{gap:8px}
+  .sidebar nav a{width:42px;height:42px;padding:0;display:flex;align-items:center;justify-content:center;line-height:0}
+  .sidebar nav a>span{display:none}
+  .sidebar nav a svg{margin:0}
+  .trainer-menu{margin:0 0 0 4px}
+  .sidebar-foot.trainer-trigger{width:42px;height:42px;min-height:42px;margin:0;padding:0;border:0;display:grid;grid-template-columns:1fr;place-items:center}
+  .trainer-trigger>.avatar,.trainer-trigger>div:not(.avatar),.trainer-trigger>svg:not(.mobile-user-icon){display:none}
+  .trainer-trigger .mobile-user-icon{display:block}
+  .trainer-popover{top:48px;right:0;bottom:auto;left:auto;width:min(250px,calc(100vw - 24px));z-index:40}
+}
