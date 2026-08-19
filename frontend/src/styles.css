@@ -307,7 +307,7 @@ button:not(:disabled),a[href]{cursor:pointer}
 :root[data-theme='dark'] .login-controls .language-choice button.selected{background:#293c30;color:#b8f0c8;box-shadow:none}
 
 /* Align the calendar labels with their matching time grid lines. */
-.week-header>span{align-self:center;padding:0 0 0 12px;display:flex;align-items:center}
+.week-header>span{align-self:center;padding:0;display:flex;align-items:center;justify-content:center}
 .time-axis span{align-self:start;padding:0 9px;line-height:1}
 .week-header{grid-template-columns:72px repeat(7,1fr)}
 .week-body{grid-template-columns:72px repeat(7,minmax(118px,1fr))}
