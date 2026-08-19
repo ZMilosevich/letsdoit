@@ -76,7 +76,7 @@ function ThemeChoice({ iconOnly=false }: { iconOnly?: boolean }) {
   const { language } = useLanguage();
   const copy = language === 'hr' ? { light:'Svijetla', dark:'Tamna', choose:'Odaberite temu' } : { light:'Light', dark:'Dark', choose:'Choose theme' };
   if (iconOnly) return <button type="button" className="theme-icon-toggle" aria-label={theme === 'dark' ? copy.light : copy.dark} title={theme === 'dark' ? copy.light : copy.dark} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button>;
-  return <div className="theme-choice" aria-label={copy.choose}><button type="button" className={theme === 'light' ? 'selected' : ''} aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><Sun size={13}/><span>{copy.light}</span></button><button type="button" className={theme === 'dark' ? 'selected' : ''} aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><Moon size={13}/><span>{copy.dark}</span></button></div>;
+  return <div className="theme-choice" aria-label={copy.choose}><button type="button" className={theme === 'light' ? 'selected' : ''} aria-label={copy.light} title={copy.light} aria-pressed={theme === 'light'} onClick={() => setTheme('light')}><Sun size={15}/></button><button type="button" className={theme === 'dark' ? 'selected' : ''} aria-label={copy.dark} title={copy.dark} aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}><Moon size={15}/></button></div>;
 }
 
 function useCurrentUser() {
