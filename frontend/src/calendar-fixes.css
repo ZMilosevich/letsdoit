@@ -1,6 +1,6 @@
-.week-body { min-height: 870px; }
-.time-axis { grid-template-rows: repeat(15, 58px); }
-.day-column { grid-template-rows: repeat(15, 58px); }
+.week-body { min-height: var(--calendar-grid-height, 870px); }
+.time-axis { grid-template-rows: repeat(var(--calendar-hours, 15), 58px); }
+.day-column { grid-template-rows: repeat(var(--calendar-hours, 15), 58px); }
 
 .calendar-event.timed {
   position: absolute;
@@ -27,8 +27,8 @@
 .calendar-event.cancelled small { text-decoration: line-through; }
 
 .calendar-event:active { cursor: grabbing; }
-.day-timeline { position: relative; height: 870px; }
-.day-hours { height: 870px; }
+.day-timeline { position: relative; height: var(--calendar-grid-height, 870px); }
+.day-hours { height: var(--calendar-grid-height, 870px); }
 .day-hours > div {
   height: 58px;
   display: grid;

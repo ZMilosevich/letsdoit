@@ -1,4 +1,4 @@
-import { cloneElement, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { cloneElement, FormEvent, type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import CountUp from 'react-countup';
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Activity, ArrowLeft, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleAlert, Clock3, Dumbbell, Edit3, Eye, Flame, ImagePlus, KeyRound, LayoutDashboard, Maximize2, Moon, MoreHorizontal, Plus, Power, Search, ShieldCheck, Sparkles, Sun, Trash2, TrendingUp, UserRound, UserPlus, Users, X } from 'lucide-react';
@@ -200,19 +200,30 @@ function ClientDirectory() {
 }
 
 const DAY = 86_400_000;
-const CALENDAR_START = 7;
-const CALENDAR_END = 22;
-const CALENDAR_HOURS = CALENDAR_END - CALENDAR_START;
+const DEFAULT_CALENDAR_START = 7;
+const DEFAULT_CALENDAR_END = 22;
 const HOUR_HEIGHT = 58;
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 const addDays = (date: Date, days: number) => new Date(date.getTime() + days * DAY);
 const startOfWeek = (date: Date) => { const copy = new Date(date); copy.setHours(12,0,0,0); return addDays(copy, (copy.getDay() + 6) % 7 * -1); };
-const calendarMinutes = (time: string) => Number(time.slice(0,2)) * 60 + Number(time.slice(3,5)) - CALENDAR_START * 60;
-const timeAtPointer = (event: React.DragEvent<HTMLElement>) => {
+const minutesForTime = (time: string) => Number(time.slice(0,2)) * 60 + Number(time.slice(3,5));
+const calendarMinutes = (time: string, startHour: number) => minutesForTime(time) - startHour * 60;
+const calendarRangeFor = (items: CalendarSession[]) => {
+  let start = DEFAULT_CALENDAR_START;
+  let end = DEFAULT_CALENDAR_END;
+  for (const session of items) {
+    const startsAt = minutesForTime(session.start_time);
+    start = Math.min(start, Math.max(0, Math.floor(startsAt / 60)));
+    end = Math.max(end, Math.min(24, Math.ceil((startsAt + Number(session.duration || 60)) / 60)));
+  }
+  const hours = end - start;
+  return { start, hours, style: { '--calendar-hours': hours, '--calendar-grid-height': `${hours * HOUR_HEIGHT}px` } as CSSProperties };
+};
+const timeAtPointer = (event: React.DragEvent<HTMLElement>, startHour: number, hours: number) => {
   const rect = event.currentTarget.getBoundingClientRect();
   const rawMinutes = ((event.clientY - rect.top) / HOUR_HEIGHT) * 60;
   const rounded = Math.round(rawMinutes / 15) * 15;
-  const minutes = Math.max(0, Math.min(CALENDAR_HOURS * 60 - 15, rounded)) + CALENDAR_START * 60;
+  const minutes = Math.max(0, Math.min(hours * 60 - 15, rounded)) + startHour * 60;
   return `${String(Math.floor(minutes / 60)).padStart(2,'0')}:${String(minutes % 60).padStart(2,'0')}`;
 };
 
@@ -224,18 +235,19 @@ function SchedulePage() {
   useEffect(()=>{load()},[]);
   const filtered=sessions.filter(s=>(clientFilter==='all'||String(s.client_id)===clientFilter)&&(typeFilter==='all'||s.training_type===typeFilter));
   const weekStart=startOfWeek(date); const week=Array.from({length:7},(_,i)=>addDays(weekStart,i)); const today=isoDate(new Date());
+  const weekSessions=filtered.filter(session=>week.some(day=>session.scheduled_date===isoDate(day))); const daySessions=filtered.filter(session=>session.scheduled_date===isoDate(date)); const calendarRange=calendarRangeFor(view==='day'?daySessions:weekSessions); const hourSlots=Array.from({length:calendarRange.hours},(_,i)=>`${String(i+calendarRange.start).padStart(2,'0')}:00`);
   const changeDate=(amount:number)=>setDate(view==='month'?new Date(date.getFullYear(),date.getMonth()+amount,1,12):addDays(date,amount*(view==='week'?7:1)));
   const move=async (session:CalendarSession,targetDate:string,targetTime:string)=>{ const previous=sessions; setSessions(items=>items.map(item=>item.id===session.id?{...item,scheduled_date:targetDate,start_time:targetTime}:item)); const r=await fetch(apiUrl(`sessions/${session.id}`),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({scheduled_date:targetDate,start_time:targetTime})}); if(r.ok) load(); else {setSessions(previous);alert((await r.json()).message||'This time overlaps with another session.')} setDragged(null); };
   const dropOn=(event:React.DragEvent, targetDate:string,targetTime:string)=>{event.preventDefault();event.stopPropagation();const id=Number(event.dataTransfer.getData('text/plain'));const session=dragged||sessions.find(item=>item.id===id);if(session)move(session,targetDate,targetTime);};
-  const dropOnTimeline=(event:React.DragEvent<HTMLElement>,targetDate:string)=>dropOn(event,targetDate,timeAtPointer(event));
+  const dropOnTimeline=(event:React.DragEvent<HTMLElement>,targetDate:string)=>dropOn(event,targetDate,timeAtPointer(event,calendarRange.start,calendarRange.hours));
   const slot=(day:Date,time:string)=><button className="calendar-slot" aria-label={`Schedule session at ${time}`} onClick={()=>setNewSlot({date:isoDate(day),time})} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>dropOn(e,isoDate(day),time)}/>;
-  const card=(session:CalendarSession,timed=false)=><button key={session.id} draggable aria-label={`${session.start_time}, ${session.client_name}, ${session.title}, ${session.duration} minutes`} style={timed?{top:`${calendarMinutes(session.start_time)/60*HOUR_HEIGHT}px`,height:`${Math.max(64,Number(session.duration||60)/60*HOUR_HEIGHT-5)}px`}:undefined} onDragStart={event=>{event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',String(session.id));setDragged(session)}} onDragEnd={()=>setDragged(null)} onClick={()=>setEditing(session)} className={`calendar-event ${timed?'timed':''} ${session.status==='missed'?'cancelled':session.status}`}><b>{session.start_time}</b><span>{session.client_name}</span><small title={session.title}>{session.title} · {session.duration} min</small></button>;
+  const card=(session:CalendarSession,timed=false)=><button key={session.id} draggable aria-label={`${session.start_time}, ${session.client_name}, ${session.title}, ${session.duration} minutes`} style={timed?{top:`${calendarMinutes(session.start_time,calendarRange.start)/60*HOUR_HEIGHT}px`,height:`${Math.max(64,Number(session.duration||60)/60*HOUR_HEIGHT-5)}px`}:undefined} onDragStart={event=>{event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',String(session.id));setDragged(session)}} onDragEnd={()=>setDragged(null)} onClick={()=>setEditing(session)} className={`calendar-event ${timed?'timed':''} ${session.status==='missed'?'cancelled':session.status}`}><b>{session.start_time}</b><span>{session.client_name}</span><small title={session.title}>{session.title} · {session.duration} min</small></button>;
   const monthDays=Array.from({length:42},(_,i)=>addDays(startOfWeek(new Date(date.getFullYear(),date.getMonth(),1,12)),i));
   return <Shell active="schedule"><div className="page nav-page calendar-page"><header className="page-header"><div><p className="eyebrow">Training calendar</p><h1>Schedule</h1><p>A clear view of upcoming client sessions and check-ins.</p></div><button className="primary" onClick={()=>setNewSlot({date:isoDate(date),time:'09:00'})}><Plus size={18}/>Schedule session</button></header>
     <section className="calendar-toolbar"><div className="calendar-navigation"><button aria-label="Previous period" onClick={()=>changeDate(-1)}><ChevronRight className="flip" size={18}/></button><button onClick={()=>setDate(new Date())}>Today</button><button aria-label="Next period" onClick={()=>changeDate(1)}><ChevronRight size={18}/></button><strong>{date.toLocaleDateString(locale,{month:'long',year:'numeric'})}</strong></div><div className="calendar-tools"><select aria-label="Filter by client" value={clientFilter} onChange={e=>setClientFilter(e.target.value)}><option value="all">All clients</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><select aria-label="Filter by training type" value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="all">All training types</option><option>Strength</option><option>Conditioning</option><option>Recovery</option></select><div className="view-switch" aria-label="Calendar view"><button className={view==='month'?'active':''} onClick={()=>setView('month')}>Month</button><button className={view==='week'?'active':''} onClick={()=>setView('week')}>Week</button><button className={view==='day'?'active':''} onClick={()=>setView('day')}>Day</button></div></div></section>
-    {view==='month'&&<section className="month-calendar">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=><b key={day}>{day}</b>)}{monthDays.map(day=>{const daySessions=filtered.filter(s=>s.scheduled_date===isoDate(day)); return <div key={isoDate(day)} className={`month-day ${day.getMonth()!==date.getMonth()?'outside':''} ${isoDate(day)===today?'today':''}`} onClick={()=>setNewSlot({date:isoDate(day),time:'09:00'})} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>dropOn(e,isoDate(day),dragged?.start_time||'09:00')}><span>{day.getDate()}</span>{daySessions.slice(0,3).map(s=>card(s))}{daySessions.length>3&&<small>+{daySessions.length-3} more</small>}</div>})}</section>}
-    {view==='week'&&<section className="week-calendar"><div className="week-header"><span>Time</span>{week.map(day=><button key={isoDate(day)} className={isoDate(day)===today?'today':''} onClick={()=>{setDate(day);setView('day')}}><small>{day.toLocaleDateString(locale,{weekday:'short'})}</small><b>{day.getDate()}</b></button>)}</div><div className="week-body"><div className="time-axis">{Array.from({length:CALENDAR_HOURS},(_,i)=><span key={i}>{String(i+CALENDAR_START).padStart(2,'0')}:00</span>)}</div>{week.map(day=><div className="day-column" key={isoDate(day)} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>dropOnTimeline(e,isoDate(day))}>{Array.from({length:CALENDAR_HOURS},(_,i)=>slot(day,`${String(i+CALENDAR_START).padStart(2,'0')}:00`))}{filtered.filter(s=>s.scheduled_date===isoDate(day)).map(s=>card(s,true))}</div>)}</div></section>}
-    {view==='day'&&<section className="day-calendar"><header><div><p className="eyebrow">{date.toLocaleDateString(locale,{weekday:'long'})}</p><h2>{date.toLocaleDateString(locale,{day:'numeric',month:'long'})}</h2></div><span>{filtered.filter(s=>s.scheduled_date===isoDate(date)).length} sessions</span></header><div className="day-timeline" onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>dropOnTimeline(e,isoDate(date))}><div className="day-hours">{Array.from({length:CALENDAR_HOURS},(_,i)=>{const time=`${String(i+CALENDAR_START).padStart(2,'0')}:00`; return <div key={time}><b>{time}</b>{slot(date,time)}</div>})}</div><div className="day-events">{filtered.filter(s=>s.scheduled_date===isoDate(date)).map(s=>card(s,true))}</div></div></section>}
+    {view==='month'&&<section className="month-calendar">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=><b key={day}>{day}</b>)}{monthDays.map(day=>{const sessionsForDay=filtered.filter(s=>s.scheduled_date===isoDate(day)); return <div key={isoDate(day)} className={`month-day ${day.getMonth()!==date.getMonth()?'outside':''} ${isoDate(day)===today?'today':''}`} onClick={()=>setNewSlot({date:isoDate(day),time:'09:00'})} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>dropOn(e,isoDate(day),dragged?.start_time||'09:00')}><span>{day.getDate()}</span>{sessionsForDay.slice(0,3).map(s=>card(s))}{sessionsForDay.length>3&&<small>+{sessionsForDay.length-3} more</small>}</div>})}</section>}
+    {view==='week'&&<section className="week-calendar"><div className="week-header"><span>Time</span>{week.map(day=><button key={isoDate(day)} className={isoDate(day)===today?'today':''} onClick={()=>{setDate(day);setView('day')}}><small>{day.toLocaleDateString(locale,{weekday:'short'})}</small><b>{day.getDate()}</b></button>)}</div><div className="week-body" style={calendarRange.style}><div className="time-axis">{hourSlots.map(time=><span key={time}>{time}</span>)}</div>{week.map(day=><div className="day-column" key={isoDate(day)} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>dropOnTimeline(e,isoDate(day))}>{hourSlots.map(time=>slot(day,time))}{weekSessions.filter(s=>s.scheduled_date===isoDate(day)).map(s=>card(s,true))}</div>)}</div></section>}
+    {view==='day'&&<section className="day-calendar"><header><div><p className="eyebrow">{date.toLocaleDateString(locale,{weekday:'long'})}</p><h2>{date.toLocaleDateString(locale,{day:'numeric',month:'long'})}</h2></div><span>{daySessions.length} sessions</span></header><div className="day-timeline" style={calendarRange.style} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>dropOnTimeline(e,isoDate(date))}><div className="day-hours">{hourSlots.map(time=><div key={time}><b>{time}</b>{slot(date,time)}</div>)}</div><div className="day-events">{daySessions.map(s=>card(s,true))}</div></div></section>}
     <section className="calendar-legend"><span><i className="upcoming"/>Upcoming</span><span><i className="completed"/>Completed</span><span><i className="cancelled"/>Cancelled</span><span>Drag a session to move it</span></section>
   </div>{(editing||newSlot)&&<SessionModal session={editing} slot={newSlot} clients={clients} onClose={()=>{setEditing(null);setNewSlot(null)}} onSaved={()=>{setEditing(null);setNewSlot(null);load()}}/>}</Shell>
 }
