@@ -239,7 +239,7 @@ button:not(:disabled),a[href]{cursor:pointer}
 .admin-theme-row .theme-icon-toggle{margin-left:auto;border-color:#425348;background:transparent;color:#d7e7db}.admin-theme-row .theme-icon-toggle:hover{background:#2d4134;color:#fff}
 
 /* Dark theme */
-:root[data-theme='dark']{color-scheme:dark;--bg:#16191b;--surface:#1f2325;--surface-soft:#272b2d;--border:#2e2e2e;--text:#f0f3f1;--muted:#afb6b3;--accent:#56b979;--accent-hover:#70cc91;--accent-soft:#203528;--success:#65cf89;--warning:#f0a66d;--warning-soft:#392719;--danger:#f1847d;--violet:#b6a7ff;--shadow:0 10px 35px rgb(0 0 0 / .3);--surface-drop-shadow:drop-shadow(0 6px 4px rgb(0 0 0 / .24))}
+:root[data-theme='dark']{color-scheme:dark;--bg:#16191b;--surface:#1f2325;--surface-soft:#272b2d;--border:#2e2e2e;--text:#f0f3f1;--muted:#c0c7c3;--accent:#56b979;--accent-hover:#70cc91;--accent-soft:#203528;--success:#65cf89;--warning:#f0a66d;--warning-soft:#392719;--danger:#f1847d;--violet:#b6a7ff;--shadow:0 10px 35px rgb(0 0 0 / .3);--surface-drop-shadow:drop-shadow(0 6px 4px rgb(0 0 0 / .24))}
 :root[data-theme='dark'] .shell,:root[data-theme='dark'] .admin-shell,:root[data-theme='dark'] .client-portal{background:var(--bg)}
 :root[data-theme='dark'] .secondary,:root[data-theme='dark'] .tools select,:root[data-theme='dark'] .calendar-navigation button,:root[data-theme='dark'] .calendar-tools select,:root[data-theme='dark'] .field input,:root[data-theme='dark'] .field select,:root[data-theme='dark'] .field textarea,:root[data-theme='dark'] .day-picker button,:root[data-theme='dark'] .language-choice button,:root[data-theme='dark'] .onboarding-language button,:root[data-theme='dark'] .theme-choice,:root[data-theme='dark'] .theme-icon-toggle{background:var(--surface);color:var(--text)}
 :root[data-theme='dark'] .metric,:root[data-theme='dark'] .client-section,:root[data-theme='dark'] .tab-panel,:root[data-theme='dark'] .workout-editor,:root[data-theme='dark'] .summary-grid article,:root[data-theme='dark'] .profile-columns>div,:root[data-theme='dark'] .directory-tools,:root[data-theme='dark'] .directory-card,:root[data-theme='dark'] .schedule-board,:root[data-theme='dark'] .report-panel,:root[data-theme='dark'] .week-calendar,:root[data-theme='dark'] .month-calendar,:root[data-theme='dark'] .day-calendar,:root[data-theme='dark'] .admin-directory,:root[data-theme='dark'] .portal-workouts article,:root[data-theme='dark'] .confirm-card,:root[data-theme='dark'] .portal-history,:root[data-theme='dark'] .portal-empty,:root[data-theme='dark'] .modal,:root[data-theme='dark'] .exercise-lightbox{background:var(--surface);color:var(--text)}
@@ -363,3 +363,16 @@ button:not(:disabled),a[href]{cursor:pointer}
 :root[data-theme='dark'] .login-controls .language-choice button+button{border-left-color:#485052}
 :root[data-theme='dark'] .login-controls .language-choice button.selected{background:#293c30}
 :root[data-theme='dark'] .google-button:hover{background:#2a2f31;border-color:#555d5d}
+
+/* Dashboard hierarchy and readable metadata. */
+@media(min-width:781px){
+  .dashboard-page .page-header h1{font-size:clamp(32px,2.5vw,38px)}
+  .metric p{font-size:14px;font-weight:700;line-height:1.3}
+  .client-id strong{font-size:15px}
+  .report-row strong{font-size:15px}
+  .report-row p{font-size:13px;line-height:1.45}
+  .status{font-size:11px;padding:4px 9px}
+  .sidebar nav a,.sidebar nav button{padding-top:12px;padding-bottom:12px}
+}
+:root[data-theme='dark'] .attention-strip strong{color:#f4f7f5}
+:root[data-theme='dark'] .attention-strip p{color:#c8d1cc}
