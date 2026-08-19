@@ -5,6 +5,7 @@ import App from './App';
 import './styles.css';
 import './calendar-fixes.css';
 import { LanguageProvider } from './lib/i18n';
+import { ThemeProvider } from './lib/theme';
 
 const originalFetch = window.fetch.bind(window);
 window.fetch = ((input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -20,5 +21,5 @@ const baseEl = document.querySelector('base');
 const basename = baseEl ? new URL(baseEl.href).pathname.replace(/\/$/, '') : '';
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode><LanguageProvider><BrowserRouter basename={basename}><App /></BrowserRouter></LanguageProvider></StrictMode>,
+  <StrictMode><ThemeProvider><LanguageProvider><BrowserRouter basename={basename}><App /></BrowserRouter></LanguageProvider></ThemeProvider></StrictMode>,
 );

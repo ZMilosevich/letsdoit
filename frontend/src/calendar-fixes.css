@@ -54,3 +54,6 @@
   right: auto;
   width: min(430px, calc(100% - 24px));
 }
+
+:root[data-theme='dark'] .day-hours > div { border-color: #2b3b31; }
+:root[data-theme='dark'] .day-hours > div > b { background: #1c2821; border-color: #2b3b31; }
