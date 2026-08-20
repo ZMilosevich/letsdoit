@@ -376,3 +376,7 @@ button:not(:disabled),a[href]{cursor:pointer}
 }
 :root[data-theme='dark'] .attention-strip strong{color:#f4f7f5}
 :root[data-theme='dark'] .attention-strip p{color:#c8d1cc}
+
+/* Keep the trainer workspace content frame consistent across screens. */
+:root{--content-max-width:1280px}
+.page,.nav-page,.plan-page,.calendar-page{max-width:var(--content-max-width)}
