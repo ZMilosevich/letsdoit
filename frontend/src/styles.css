@@ -455,3 +455,7 @@ html,.client-table,.exercise-table,.week-calendar,.month-calendar,.week-body,.ex
 
 /* Keep the sticky mobile/tablet navigation gently separated from the page. */
 @media (max-width:900px){.sidebar,.admin-sidebar{box-shadow:0 2px 14px rgb(12 30 19 / .6)}}
+
+/* Keep exercise media previews compact, with a restrained overlay icon. */
+.exercise-media-thumb,.exercise-media-empty{width:58px;height:70px;flex:0 0 90px;color:#c4c4c4}
+.exercise-media-thumb svg{position:absolute;right:3px;bottom:3px;padding:2px;width:18px;height:18px;background:none;border-radius:5px;box-shadow:0 1px 4px #1a30231f}
