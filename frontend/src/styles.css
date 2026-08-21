@@ -227,7 +227,8 @@ button:not(:disabled),a[href]{cursor:pointer}
 
 /* Theme controls */
 .theme-choice{display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
-.theme-choice button{width:32px;height:30px;border:0;background:transparent;color:var(--muted);padding:0;display:inline-flex;align-items:center;justify-content:center;font:700 10px var(--font);cursor:pointer}
+.theme-choice button{width:27px;height:23px;border:0;background:transparent;color:var(--muted);padding:0;display:inline-flex;align-items:center;justify-content:center;font:700 10px var(--font);cursor:pointer}
+.theme-choice button+button{border-left:1px solid var(--border)}
 .theme-choice button.selected{background:var(--accent);color:#fff}
 .theme-icon-toggle{width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--accent);display:grid;place-items:center;cursor:pointer}
 .theme-icon-toggle:hover{background:var(--accent-soft)}
@@ -306,6 +307,7 @@ button:not(:disabled),a[href]{cursor:pointer}
 :root[data-theme='dark'] .login-controls .language-choice button+button{border-left-color:#405046}
 :root[data-theme='dark'] .login-controls .language-choice button.selected{background:#293c30;color:#b8f0c8;box-shadow:none}
 :root[data-theme='dark'] .google-button:hover{background:#26382c;border-color:#52665a;color:var(--text)}
+:root[data-theme='dark'] .theme-choice button.selected{background:var(--accent-soft);color:var(--accent)}
 
 /* Align the calendar labels with their matching time grid lines. */
 .week-header>span{align-self:center;padding:0;display:flex;align-items:center;justify-content:center}
@@ -380,3 +382,8 @@ button:not(:disabled),a[href]{cursor:pointer}
 /* Keep the trainer workspace content frame consistent across screens. */
 :root{--content-max-width:1280px}
 .page,.nav-page,.plan-page,.calendar-page{max-width:var(--content-max-width)}
+
+/* Keep the language and theme segmented controls the same compact size. */
+.language-row button{height:23px;padding:0 7px;display:inline-flex;align-items:center;justify-content:center}
+.language-row>div,.theme-choice{border-radius:8px}
+.popover-button{display:flex;align-items:center;gap:8px}
