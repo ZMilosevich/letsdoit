@@ -387,3 +387,8 @@ button:not(:disabled),a[href]{cursor:pointer}
 .language-row button{height:23px;padding:0 7px;display:inline-flex;align-items:center;justify-content:center}
 .language-row>div,.theme-choice{border-radius:8px}
 .popover-button{display:flex;align-items:center;gap:8px}
+
+/* Keep key workout and report titles readable across screen sizes. */
+.client-id strong,.report-row strong,.workout-summary>span:nth-child(2) strong{font-size:17px}
+.status{font-size:11px;padding:7px 14px}
+@media(max-width:780px){.profile-actions{width:100%;max-width:100%;flex-wrap:nowrap}.profile-actions a{white-space:nowrap}.profile-actions .secondary{flex:0 0 auto}.profile-actions .primary{flex:1 1 auto;min-width:0;padding-left:12px;padding-right:12px}}
