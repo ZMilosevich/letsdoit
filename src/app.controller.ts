@@ -53,6 +53,36 @@ function sessionOverlap(clientId: number, date: string, startTime: string, durat
   });
 }
 
+type SessionTiming = { scheduled_date: string; start_time?: string | null; duration?: number | null };
+
+function sessionStartAt(session: SessionTiming): number {
+  const [year, month, day] = String(session.scheduled_date || '').split('-').map(Number);
+  const [hour, minute] = String(session.start_time || '09:00').split(':').map(Number);
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return Number.NaN;
+  return new Date(year, month - 1, day, hour, minute).getTime();
+}
+
+function sessionEndAt(session: SessionTiming): number {
+  return sessionStartAt(session) + Math.max(15, Number(session.duration) || 60) * 60_000;
+}
+
+/** Keep persisted session states aligned with their scheduled time. */
+function syncSessionStatuses(): void {
+  const rows = db.prepare("SELECT id, scheduled_date, start_time, duration, status FROM sessions WHERE status IN ('upcoming', 'completed')").all() as (SessionTiming & { id: number; status: string })[];
+  const now = Date.now();
+  const update = db.prepare('UPDATE sessions SET status = ? WHERE id = ? AND status = ?');
+  const reconcile = db.transaction(() => {
+    rows.forEach((session) => {
+      const start = sessionStartAt(session);
+      const end = sessionEndAt(session);
+      if (!Number.isFinite(start)) return;
+      if (session.status === 'completed' && start > now) update.run('upcoming', session.id, 'completed');
+      else if (session.status === 'upcoming' && end <= now) update.run('missed', session.id, 'upcoming');
+    });
+  });
+  reconcile();
+}
+
 function releaseScheduledDeliveries(): void {
   db.prepare("UPDATE plan_deliveries SET status = 'sent', sent_at = COALESCE(sent_at, available_at) WHERE status = 'scheduled' AND available_at <= ?")
     .run(new Date().toISOString());
@@ -299,6 +329,7 @@ export class AppController {
   @Get('state')
   getState(@Req() request: FastifyRequest) {
     const user = requireTrainer(request);
+    syncSessionStatuses();
     releaseScheduledDeliveries();
     const clients = (user.role === 'admin' ? db.prepare('SELECT * FROM clients ORDER BY name').all() : db.prepare('SELECT * FROM clients WHERE trainer_id=? ORDER BY name').all(user.id)) as any[];
     const sessionRows = db.prepare('SELECT client_id, status, COUNT(*) count FROM sessions GROUP BY client_id, status').all() as any[];
@@ -314,6 +345,7 @@ export class AppController {
   @Get('reports')
   getReports(@Req() request: FastifyRequest, @Query('period') requestedPeriod?: string) {
     const user = requireTrainer(request);
+    syncSessionStatuses();
     const window = reportWindow(requestedPeriod);
     const clients = (user.role === 'admin'
       ? db.prepare('SELECT id, name, status FROM clients ORDER BY name').all()
@@ -370,6 +402,7 @@ export class AppController {
   @Get('schedule')
   getSchedule(@Req() request: FastifyRequest) {
     const user = requireTrainer(request);
+    syncSessionStatuses();
     return user.role === 'admin' ? db.prepare(`${calendarSelect} ORDER BY sessions.scheduled_date, sessions.start_time`).all() : db.prepare(`${calendarSelect} WHERE clients.trainer_id=? ORDER BY sessions.scheduled_date, sessions.start_time`).all(user.id);
   }
 
@@ -386,7 +419,8 @@ export class AppController {
     requireClientAccess(user, clientId);
     const overlap = sessionOverlap(clientId, date, startTime, duration);
     if (overlap) throw new BadRequestException(`This overlaps with ${overlap.title} at ${overlap.start_time}.`);
-    const status = ['upcoming', 'completed', 'cancelled'].includes(body.status) ? body.status : 'upcoming';
+    if (body.status === 'completed') throw new BadRequestException('New sessions must start as upcoming or cancelled.');
+    const status = body.status === 'cancelled' ? 'cancelled' : 'upcoming';
     const recurrence = String(body.recurrence_rule || '');
     const requestedDays = recurrence.startsWith('weekly:') ? recurrence.slice(7).split(',').map(Number).filter((day) => day >= 0 && day <= 6) : [];
     const dates = [date];
@@ -410,6 +444,7 @@ export class AppController {
   @Get('clients/:id')
   getClient(@Req() request: FastifyRequest, @Param('id') id: string) {
     const user = requireTrainer(request);
+    syncSessionStatuses();
     releaseScheduledDeliveries();
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(id)) as any;
     if (!client) throw new NotFoundException('Client not found');
@@ -544,6 +579,7 @@ export class AppController {
   @Patch('sessions/:id')
   updateSession(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: any) {
     const user = requireTrainer(request);
+    syncSessionStatuses();
     const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(Number(id)) as any;
     if (!session) throw new NotFoundException('Session not found');
     requireClientAccess(user, session.client_id);
@@ -554,7 +590,12 @@ export class AppController {
       const overlap = sessionOverlap(session.client_id, scheduledDate, startTime, duration, session.id);
       if (overlap) throw new BadRequestException(`This overlaps with ${overlap.title} at ${overlap.start_time}.`);
     }
-    db.prepare('UPDATE sessions SET title = ?, scheduled_date = ?, start_time = ?, training_type = ?, recurrence_rule = ?, status = ?, duration = ?, difficulty = ?, notes = ?, performance_json = ? WHERE id = ?').run(body.title ?? session.title, scheduledDate, startTime, body.training_type ?? session.training_type ?? 'Strength', body.recurrence_rule ?? session.recurrence_rule ?? '', body.status || session.status, duration, body.difficulty ?? session.difficulty, body.notes ?? session.notes, body.performance ? JSON.stringify(body.performance) : session.performance_json, session.id);
+    const nextStatus = body.status || session.status;
+    if (nextStatus === 'completed' && sessionStartAt({ scheduled_date: scheduledDate, start_time: startTime }) > Date.now()) {
+      throw new BadRequestException('A future session cannot be marked completed.');
+    }
+    const savedStatus = nextStatus === 'upcoming' && sessionEndAt({ scheduled_date: scheduledDate, start_time: startTime, duration }) <= Date.now() ? 'missed' : nextStatus;
+    db.prepare('UPDATE sessions SET title = ?, scheduled_date = ?, start_time = ?, training_type = ?, recurrence_rule = ?, status = ?, duration = ?, difficulty = ?, notes = ?, performance_json = ? WHERE id = ?').run(body.title ?? session.title, scheduledDate, startTime, body.training_type ?? session.training_type ?? 'Strength', body.recurrence_rule ?? session.recurrence_rule ?? '', savedStatus, duration, body.difficulty ?? session.difficulty, body.notes ?? session.notes, body.performance ? JSON.stringify(body.performance) : session.performance_json, session.id);
     return db.prepare(`${calendarSelect} WHERE sessions.id = ?`).get(session.id);
   }
 
@@ -573,6 +614,7 @@ export class AppController {
     releaseScheduledDeliveries();
     const user = requireUser(request);
     if (user.role !== 'client' || !user.client_id) throw new UnauthorizedException('Client access is required.');
+    syncSessionStatuses();
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(user.client_id) as any;
     const plan = db.prepare('SELECT * FROM plans WHERE client_id = ? ORDER BY id DESC LIMIT 1').get(user.client_id) as any;
     const delivery = plan ? db.prepare('SELECT * FROM plan_deliveries WHERE plan_id = ?').get(plan.id) as any : null;
@@ -589,6 +631,7 @@ export class AppController {
     if (user.role !== 'client' || !user.client_id) throw new UnauthorizedException('Client access is required.');
     const session = db.prepare('SELECT * FROM sessions WHERE id = ? AND client_id = ?').get(Number(id), user.client_id) as any;
     if (!session) throw new NotFoundException('Workout not found.');
+    if (sessionStartAt(session) > Date.now()) throw new BadRequestException('This workout cannot be completed before its scheduled start time.');
     const performance = Array.isArray(body.performance) ? body.performance.slice(0, 30).map((item: any) => ({
       exercise: String(item.exercise || '').slice(0, 120), sets: String(item.sets || '').slice(0, 60), load: String(item.load || '').slice(0, 60), reps: String(item.reps || '').slice(0, 60),
     })) : parse(session.performance_json);
