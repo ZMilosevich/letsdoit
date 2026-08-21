@@ -398,3 +398,40 @@ button:not(:disabled),a[href]{cursor:pointer}
 .modal-title button{order:2;position:absolute;right:calc(50% - 300px);border:0;background:#f1f3f2;border-radius:8px;width:34px;height:34px;display:grid;place-items:center;cursor:pointer}
 @media(max-width:1100px){.modal-title button,.modal.compact .modal-title button{position:static;right:auto}}
 @media(max-width:780px){.profile-actions{width:100%;max-width:100%;flex-wrap:nowrap}.profile-actions a{white-space:nowrap}.profile-actions .secondary{flex:0 0 auto}.profile-actions .primary{flex:1 1 auto;min-width:0;padding-left:12px;padding-right:12px}}
+
+/* Use the compact workspace navigation on tablet portrait widths too. */
+@media (min-width:781px) and (max-width:900px){
+  .sidebar,.admin-sidebar{position:sticky;top:0;inset:auto;width:100%;height:auto;padding:15px;flex-direction:row;align-items:center;box-shadow:0 2px 14px rgb(12 30 19 / .18)}
+  .brand,.admin-sidebar .brand{padding:0;margin:0 auto 0 0}
+  .sidebar nav,.admin-sidebar nav{display:flex;gap:8px}
+  .sidebar nav a,.sidebar nav button,.admin-sidebar nav a,.admin-sidebar nav button{font-size:0;width:42px;height:42px;padding:0;display:flex;align-items:center;justify-content:center;line-height:0}
+  .sidebar nav a>span{display:none}
+  .sidebar nav a svg{margin:0}
+  .sidebar-foot{display:none}
+  .trainer-menu{margin:0 0 0 4px}
+  .sidebar-foot.trainer-trigger{width:42px;height:42px;min-height:42px;margin:0;padding:0;border:0;display:grid;grid-template-columns:1fr;place-items:center}
+  .trainer-trigger>.avatar,.trainer-trigger>div:not(.avatar),.trainer-trigger>svg:not(.mobile-user-icon){display:none}
+  .trainer-trigger .mobile-user-icon{display:block}
+  .trainer-popover{top:48px;right:0;bottom:auto;left:auto;width:min(250px,calc(100vw - 24px));z-index:40}
+  .shell>main,.admin-shell>main{margin-left:0}
+  .page,.admin-page{padding:26px 18px 56px}
+  .page-header,.plan-header{flex-wrap:wrap;gap:16px;margin-bottom:24px}
+  .metrics,.summary-grid{grid-template-columns:1fr 1fr}
+  .profile-columns,.progress-layout{grid-template-columns:1fr}
+  .photo-card{grid-column:auto}
+  .client-table,.exercise-table{overflow-x:auto}
+  .client-row,.table-head{min-width:750px}
+  .exercise-head,.exercise-row{min-width:804px}
+  .tools{width:100%}
+  .section-head{align-items:flex-start;flex-direction:column}
+  .search{flex:1}
+  .search input{width:100%}
+  .report-row{grid-template-columns:minmax(0,1fr) auto;column-gap:18px;row-gap:12px}
+  .report-row>.status{grid-column:1/-1}
+  .report-row>div{grid-column:1/-1}
+  .report-row>a{grid-column:2}
+  .profile-actions{width:auto;max-width:100%;flex-wrap:nowrap}
+  .profile-actions a{white-space:nowrap}
+  .profile-actions .secondary{flex:0 0 auto}
+  .profile-actions .primary{flex:0 1 auto;min-width:0;padding-left:12px;padding-right:12px}
+}
