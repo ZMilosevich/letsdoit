@@ -432,6 +432,13 @@ button:not(:disabled),a[href]{cursor:pointer}
   .report-row>a{grid-column:2}
   .profile-actions{width:auto;max-width:100%;flex-wrap:nowrap}
   .profile-actions a{white-space:nowrap}
-  .profile-actions .secondary{flex:0 0 auto}
+.profile-actions .secondary{flex:0 0 auto}
   .profile-actions .primary{flex:0 1 auto;min-width:0;padding-left:12px;padding-right:12px}
 }
+
+/* Keep today’s session status above the client details. */
+.today-schedule-list>a{grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;column-gap:12px;row-gap:2px}
+.today-schedule-list>a>b{grid-column:1;grid-row:1 / 3;align-self:center}
+.today-schedule-list>a>i.status{grid-column:2;grid-row:1;justify-self:start;align-self:end}
+.today-schedule-list>a>span{grid-column:2;grid-row:2;min-width:0}
+.today-schedule-list>a>svg{grid-column:3;grid-row:1 / 3;align-self:center}
