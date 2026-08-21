@@ -463,3 +463,4 @@ html,.client-table,.exercise-table,.week-calendar,.month-calendar,.week-body,.ex
 :root[data-theme='dark'] .calendar-event.cancelled{background:#121b1f;color:#7b7b7b}
 :root[data-theme='dark'] .field input,:root[data-theme='dark'] .field select,:root[data-theme='dark'] .field textarea{background:#17221c;border-color:#1b1b1b;color:var(--text)}
 :root[data-theme='dark'] .today-schedule-list .today-empty:hover{background:#223029}
+:root[data-theme='dark'] .insight-card div{border-top:1px solid #1b4b25;padding-top:12px}
