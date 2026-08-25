@@ -1,8 +1,9 @@
 import { BadRequestException, Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { authenticate, AuthUser, buildPlan, completeOnboarding, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, createPassword, db, findOrCreateGoogleUser, issueSession, localizeWorkouts, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, setAccountPassword, userForToken } from './db';
+import { authenticate, AuthUser, buildPlan, completeOnboarding, consumeAuthCode, consumeOauthState, createAuthCode, createClientAccount, createOauthState, createPassword, db, findOrCreateGoogleUser, issueSession, localizeWorkouts, migrateDemoSchedule, revokeSession, seedAccounts, seedCalendarSessions, seedDeliveries, seedIfEmpty, setAccountPassword, userForToken } from './db';
 
 seedIfEmpty();
+migrateDemoSchedule();
 seedDeliveries();
 seedCalendarSessions();
 seedAccounts();

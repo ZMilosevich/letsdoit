@@ -510,6 +510,17 @@ export function buildPlan(days: number, level: string, goal: string, limitations
   return localizeWorkouts(base.slice(0, Math.max(2, Math.min(days, 4))), language);
 }
 
+function demoWeekDates(reference = new Date()) {
+  const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const monday = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const addDays = (days: number) => { const date = new Date(monday); date.setDate(date.getDate() + days); return date; };
+  const month = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(monday);
+  const end = addDays(6);
+  const label = monday.getMonth() === end.getMonth() ? `${month} ${monday.getDate()}–${end.getDate()}` : `${month} ${monday.getDate()}–${new Intl.DateTimeFormat('en-US', { month: 'short' }).format(end)} ${end.getDate()}`;
+  return { label, monday: dateKey(monday), tuesday: dateKey(addDays(1)), wednesday: dateKey(addDays(2)), thursday: dateKey(addDays(3)), friday: dateKey(addDays(4)) };
+}
+
 export function seedIfEmpty(): void {
   const count = db.prepare('SELECT COUNT(*) AS n FROM clients').get() as { n: number };
   if (count.n > 0) return;
@@ -527,18 +538,23 @@ export function seedIfEmpty(): void {
       ['Marcus Lee','marcus@example.com','ML','Athletic performance',25,86.1,187,'Advanced','Strong and well conditioned','Left shoulder overhead discomfort','Full gym','Strength, rowing',4,'missed','4 days ago','hr'],
     ];
     const ids = clients.map((c) => Number(addClient.run(...c).lastInsertRowid));
-    ids.forEach((id, i) => addPlan.run(id, 'Aug 10–16', i === 2 ? 'draft' : 'assigned', JSON.stringify(buildPlan(Number(clients[i][12]), String(clients[i][7]), String(clients[i][3]), String(clients[i][9]), String(clients[i][15]))), i === 0 ? 'Volume stays moderate this week while squat load increases by 2.5%. Recovery and completion are both strong.' : 'Balanced around current capacity, preferred training style, and available equipment.'));
+    const week = demoWeekDates();
+    ids.forEach((id, i) => {
+      const workouts = buildPlan(Number(clients[i][12]), String(clients[i][7]), String(clients[i][3]), String(clients[i][9]), String(clients[i][15]));
+      const rationale = i === 0 ? 'Volume stays moderate this week while squat load increases by 2.5%. Recovery and completion are both strong.' : 'Balanced around current capacity, preferred training style, and available equipment.';
+      addPlan.run(id, week.label, i === 2 ? 'draft' : 'assigned', JSON.stringify(workouts), rationale);
+    });
     const sessions = [
-      [ids[0],'Lower body strength','2026-08-10','completed',54,6,'Knee felt good throughout.',JSON.stringify([{exercise:'Back squat',sets:'4 × 6',load:'52.5 kg'},{exercise:'Romanian deadlift',sets:'3 × 8',load:'42.5 kg'}])],
-      [ids[0],'Upper body build','2026-08-12','completed',48,5,'Strong session.',JSON.stringify([{exercise:'Dumbbell bench press',sets:'4 × 8',load:'16 kg'}])],
-      [ids[0],'Full body power','2026-08-14','upcoming',null,null,'','[]'],
-      [ids[1],'Easy run + strides','2026-08-11','completed',38,8,'Pace dropped late.','[]'],
-      [ids[1],'Aerobic intervals','2026-08-13','missed',null,null,'','[]'],
-      [ids[2],'Full body strength','2026-08-12','completed',51,7,'Low back felt tight after rows.','[]'],
-      [ids[3],'Upper strength','2026-08-11','missed',null,null,'','[]'],
+      [ids[0],'Lower body strength',week.monday,'completed',54,6,'Knee felt good throughout.',JSON.stringify([{exercise:'Back squat',sets:'4 × 6',load:'52.5 kg'},{exercise:'Romanian deadlift',sets:'3 × 8',load:'42.5 kg'}])],
+      [ids[0],'Upper body build',week.wednesday,'upcoming',50,null,'','[]'],
+      [ids[0],'Full body power',week.friday,'upcoming',45,null,'','[]'],
+      [ids[1],'Easy run + strides',week.tuesday,'completed',38,8,'Pace dropped late.','[]'],
+      [ids[1],'Aerobic intervals',week.thursday,'upcoming',null,null,'','[]'],
+      [ids[2],'Full body strength',week.wednesday,'upcoming',51,null,'','[]'],
+      [ids[3],'Upper strength',week.tuesday,'upcoming',null,null,'','[]'],
     ];
     sessions.forEach((s) => addSession.run(...s));
-    [[ids[0],'2026-06-01',70.2,76,25.1,55,'Energy improving'],[ids[0],'2026-07-01',68.8,73,23.9,60,'Sleep has been solid'],[ids[0],'2026-08-10',67.4,71,22.8,67.5,'Feeling strong'],[ids[1],'2026-08-10',78.2,82,20.4,80,'Legs felt heavy']].forEach((p) => addProgress.run(...p));
+    [[ids[0],'2026-06-01',70.2,76,25.1,55,'Energy improving'],[ids[0],'2026-07-01',68.8,73,23.9,60,'Sleep has been solid'],[ids[0],week.monday,67.4,71,22.8,67.5,'Feeling strong'],[ids[1],week.monday,78.2,82,20.4,80,'Legs felt heavy']].forEach((p) => addProgress.run(...p));
   });
   seed();
 }
@@ -548,17 +564,41 @@ export function seedDeliveries(): void {
   if (count.n > 0) return;
   const plan = db.prepare('SELECT id, client_id FROM plans WHERE client_id = 1 ORDER BY id DESC LIMIT 1').get() as { id: number; client_id: number } | undefined;
   if (!plan) return;
+  const week = demoWeekDates();
   db.prepare('INSERT INTO plan_deliveries (plan_id, client_id, channel, available_at, status, sent_at, viewed_at, confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(plan.id, plan.client_id, 'in_app', '2026-08-10T08:00:00.000Z', 'viewed', '2026-08-10T08:00:00.000Z', '2026-08-10T09:14:00.000Z', '2026-08-10T09:16:00.000Z');
+    .run(plan.id, plan.client_id, 'in_app', `${week.monday}T08:00:00.000Z`, 'viewed', `${week.monday}T08:00:00.000Z`, `${week.monday}T09:14:00.000Z`, `${week.monday}T09:16:00.000Z`);
+}
+
+/** Move only the original seeded demo workspace onto the current week. */
+export function migrateDemoSchedule(): void {
+  const maya = db.prepare("SELECT id FROM clients WHERE email = 'maya@example.com'").get() as { id: number } | undefined;
+  if (!maya) return;
+  const week = demoWeekDates();
+  const plan = db.prepare("SELECT id, week_label FROM plans WHERE client_id = ? ORDER BY id DESC LIMIT 1").get(maya.id) as { id: number; week_label: string } | undefined;
+  const staleSeed = plan?.week_label === 'Aug 10–16';
+  const jordan = db.prepare("SELECT id FROM clients WHERE email = 'jordan@example.com'").get() as { id: number } | undefined;
+  const elena = db.prepare("SELECT id FROM clients WHERE email = 'elena@example.com'").get() as { id: number } | undefined;
+  const migrate = db.transaction(() => {
+    if (staleSeed && plan) {
+      db.prepare('UPDATE plans SET week_label = ? WHERE id = ?').run(week.label, plan.id);
+      db.prepare("UPDATE sessions SET scheduled_date = ?, status = 'completed' WHERE client_id = ? AND title = 'Lower body strength' AND scheduled_date = '2026-08-10'").run(week.monday, maya.id);
+      db.prepare("UPDATE sessions SET scheduled_date = ?, status = 'upcoming', duration = 50, difficulty = NULL WHERE client_id = ? AND title = 'Upper body build' AND scheduled_date = '2026-08-12'").run(week.wednesday, maya.id);
+      db.prepare("UPDATE sessions SET scheduled_date = ?, status = 'upcoming', duration = 45, difficulty = NULL WHERE client_id = ? AND title = 'Full body power' AND scheduled_date = '2026-08-14'").run(week.friday, maya.id);
+      if (jordan) db.prepare("UPDATE sessions SET client_id = ?, scheduled_date = ?, status = 'upcoming' WHERE client_id = ? AND title = 'Strength technique' AND scheduled_date = '2026-08-13'").run(jordan.id, week.wednesday, maya.id);
+    }
+    if (elena) db.prepare("UPDATE sessions SET scheduled_date = ?, status = 'upcoming' WHERE client_id = ? AND title = 'Mobility review' AND scheduled_date IN ('2026-08-13', ?)").run(week.wednesday, elena.id, week.wednesday);
+  });
+  migrate();
 }
 
 /** A couple of same-day appointments make the calendar useful on a fresh workspace. */
 export function seedCalendarSessions(): void {
-  const existing = db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE scheduled_date = '2026-08-13' AND title = 'Mobility review'").get() as { n: number };
+  const week = demoWeekDates();
+  const existing = db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE scheduled_date = ? AND title = 'Mobility review'").get(week.wednesday) as { n: number };
   if (existing.n) return;
   const insert = db.prepare('INSERT INTO sessions (client_id,title,scheduled_date,start_time,training_type,status,duration,difficulty,notes,performance_json,recurrence_rule) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
   const clients = db.prepare('SELECT id FROM clients ORDER BY id').all() as { id: number }[];
   if (clients.length < 3) return;
-  insert.run(clients[0].id, 'Strength technique', '2026-08-13', '14:00', 'Strength', 'upcoming', 60, null, '', '[]', 'weekly:1,3');
-  insert.run(clients[2].id, 'Mobility review', '2026-08-13', '17:30', 'Recovery', 'upcoming', 45, null, '', '[]', '');
+  insert.run(clients[1].id, 'Strength technique', week.wednesday, '14:00', 'Strength', 'upcoming', 60, null, '', '[]', 'weekly:1,3');
+  insert.run(clients[2].id, 'Mobility review', week.wednesday, '17:30', 'Recovery', 'upcoming', 45, null, '', '[]', '');
 }
