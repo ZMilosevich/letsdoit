@@ -514,3 +514,31 @@ html,.client-table,.exercise-table,.week-calendar,.month-calendar,.week-body,.ex
 .week-progress-card>.section-title{padding:0!important;margin:0}
 .week-progress-card .section-title h2{margin:0}
 .week-progress-card .section-title p{margin:8px 0 0}
+
+/* Keep mobile popup fields above the on-screen keyboard and independently scrollable. */
+@media(max-width:520px){
+  .modal-backdrop{
+    top:var(--popup-viewport-top,0px);
+    right:0;
+    bottom:auto;
+    left:0;
+    height:var(--popup-viewport-height,100dvh);
+    min-height:0;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling:touch;
+  }
+  .modal{
+    width:100%;
+    max-height:calc(var(--popup-viewport-height,100dvh) - 24px);
+    margin:0;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    scroll-padding-block:16px;
+  }
+  .modal input,.modal select,.modal textarea{scroll-margin-block:16px}
+}

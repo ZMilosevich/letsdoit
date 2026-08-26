@@ -166,7 +166,31 @@ function usePopupClose(onClose:()=>void) {
   return {closing,close};
 }
 
+function usePopupViewport() {
+  useEffect(()=>{
+    const viewport=window.visualViewport;
+    if(!viewport)return;
+    const root=document.documentElement;
+    const update=()=>{
+      root.style.setProperty('--popup-viewport-height',`${viewport.height}px`);
+      root.style.setProperty('--popup-viewport-top',`${viewport.offsetTop}px`);
+    };
+    update();
+    viewport.addEventListener('resize',update);
+    viewport.addEventListener('scroll',update);
+    window.addEventListener('orientationchange',update);
+    return ()=>{
+      viewport.removeEventListener('resize',update);
+      viewport.removeEventListener('scroll',update);
+      window.removeEventListener('orientationchange',update);
+      root.style.removeProperty('--popup-viewport-height');
+      root.style.removeProperty('--popup-viewport-top');
+    };
+  },[]);
+}
+
 function AnimatedPopup({onClose,children}:{onClose:()=>void;children:React.ReactElement<{onClose:()=>void}>}) {
+  usePopupViewport();
   const {close}=usePopupClose(onClose);
   return cloneElement(children,{onClose:close});
 }
