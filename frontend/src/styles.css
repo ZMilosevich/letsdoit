@@ -61,6 +61,22 @@ body{font-size:var(--type-body);line-height:1.5}
 .portal-status p,.portal-workouts li,.confirm-card p{font-size:var(--type-ui)}.portal-workouts li span{font-size:var(--type-meta)}.portal-history strong{font-size:var(--type-ui)}.portal-history small{font-size:var(--type-meta)}
 .exercise-log strong,.exercise-log input{font-size:var(--type-ui)}.password-modal>p{font-size:var(--type-ui)}.password-value code{font-size:16px}.preview-exit{font-size:var(--type-ui)}
 
+@media(max-width:1100px){
+  .dashboard-page>.ds-page-heading.page-header{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+  }
+  .dashboard-page>.ds-page-heading.page-header>.ds-page-heading-action{
+    display:block;
+    width:100% !important;
+  }
+  .dashboard-page>.ds-page-heading.page-header>.ds-page-heading-action>.primary{
+    display:flex;
+    width:100% !important;
+    max-width:none;
+  }
+}
+
 @media(max-width:780px){
   body{font-size:15px}
   .page,.admin-page{padding:26px 18px 56px}
