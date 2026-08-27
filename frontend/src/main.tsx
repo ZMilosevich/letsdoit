@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './styles.css';
 import './calendar-fixes.css';
+import './design-system.css';
 import { LanguageProvider } from './lib/i18n';
 import { ThemeProvider } from './lib/theme';
 

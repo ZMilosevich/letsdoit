@@ -1,0 +1,1051 @@
+/*
+ * LetsDoIt design system
+ *
+ * This file is the final UI layer for the trainer and client applications.
+ * Legacy feature CSS remains responsible for complex layouts (calendar, plan
+ * editor, charts), while shared tokens and primitives are defined once here.
+ */
+
+:root {
+  --ds-color-canvas: #f4f7f5;
+  --ds-color-surface: #ffffff;
+  --ds-color-surface-subtle: #f8faf9;
+  --ds-color-surface-raised: #ffffff;
+  --ds-color-border: #dfe6e1;
+  --ds-color-border-strong: #cbd7cf;
+  --ds-color-text: #17231c;
+  --ds-color-text-muted: #66736b;
+  --ds-color-primary: #196737;
+  --ds-color-primary-hover: #12542c;
+  --ds-color-primary-soft: #e8f3eb;
+  --ds-color-nav: #17261e;
+  --ds-color-nav-hover: #293b31;
+  --ds-color-nav-muted: #a9b8af;
+  --ds-color-focus: #63a77a;
+  --ds-radius-sm: 8px;
+  --ds-radius-md: 12px;
+  --ds-radius-lg: 16px;
+  --ds-radius-pill: 999px;
+  --ds-shadow-sm: 0 1px 2px rgb(20 45 29 / 0.06), 0 4px 12px rgb(20 45 29 / 0.05);
+  --ds-shadow-md: 0 12px 32px rgb(20 45 29 / 0.09);
+  --ds-shadow-nav: 0 10px 32px rgb(10 26 17 / 0.22);
+  --ds-content-max: 1240px;
+  --ds-client-max: 1120px;
+  --ds-sidebar-width: 248px;
+  --ds-control-height: 44px;
+  --ds-space-page-x: clamp(22px, 4vw, 52px);
+  --ds-space-page-y: clamp(28px, 4vw, 48px);
+
+  /* Backwards-compatible semantic aliases for feature styles. */
+  --bg: var(--ds-color-canvas);
+  --surface: var(--ds-color-surface);
+  --surface-soft: var(--ds-color-surface-subtle);
+  --border: var(--ds-color-border);
+  --text: var(--ds-color-text);
+  --muted: var(--ds-color-text-muted);
+  --accent: var(--ds-color-primary);
+  --accent-hover: var(--ds-color-primary-hover);
+  --accent-soft: var(--ds-color-primary-soft);
+  --shadow: var(--ds-shadow-md);
+  --radius: var(--ds-radius-lg);
+  --content-max-width: var(--ds-content-max);
+}
+
+:root[data-theme='dark'] {
+  --ds-color-canvas: #14191b;
+  --ds-color-surface: #1e2522;
+  --ds-color-surface-subtle: #242d29;
+  --ds-color-surface-raised: #222a26;
+  --ds-color-border: #34413a;
+  --ds-color-border-strong: #46554d;
+  --ds-color-text: #f2f6f3;
+  --ds-color-text-muted: #b6c1ba;
+  --ds-color-primary: #63c182;
+  --ds-color-primary-hover: #7bd397;
+  --ds-color-primary-soft: #203a29;
+  --ds-color-nav: #101713;
+  --ds-color-nav-hover: #24342b;
+  --ds-color-nav-muted: #a9b8af;
+  --ds-color-focus: #79cc94;
+  --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.22), 0 6px 18px rgb(0 0 0 / 0.18);
+  --ds-shadow-md: 0 14px 36px rgb(0 0 0 / 0.28);
+  --ds-shadow-nav: 0 10px 32px rgb(0 0 0 / 0.42);
+}
+
+html {
+  background: var(--ds-color-canvas);
+  color: var(--ds-color-text);
+}
+
+body {
+  min-width: 320px;
+  background: var(--ds-color-canvas);
+  color: var(--ds-color-text);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--ds-color-primary-soft);
+  color: var(--ds-color-text);
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ds-color-focus) 38%, transparent);
+  outline-offset: 2px;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+/* Brand */
+.product-brand {
+  color: #fff;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: max-content;
+  font: 700 19px/1 var(--display);
+  letter-spacing: -0.35px;
+}
+
+.product-brand-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #c8f0d2;
+  color: #14542c;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.22);
+}
+
+.sidebar > .product-brand,
+.admin-sidebar > .product-brand {
+  padding: 0 8px 30px;
+}
+
+.client-portal > header .product-brand {
+  font-size: 18px;
+}
+
+/* Page headings */
+.ds-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 30px;
+}
+
+.ds-page-heading-copy {
+  min-width: 0;
+}
+
+.ds-page-heading h1 {
+  font: 700 clamp(30px, 3vw, 40px)/1.12 var(--display);
+  letter-spacing: -1.1px;
+  margin: 5px 0 7px;
+}
+
+.ds-page-description {
+  max-width: 680px;
+  color: var(--ds-color-text-muted);
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.ds-page-heading-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+/* Controls */
+.primary,
+.secondary {
+  min-height: var(--ds-control-height);
+  border-radius: var(--ds-radius-sm);
+  padding-inline: 17px;
+  font-size: 14px;
+  font-weight: 700;
+  filter: none;
+  box-shadow: none;
+}
+
+.primary {
+  background: var(--ds-color-primary);
+  color: #fff;
+  box-shadow: 0 5px 14px rgb(25 103 55 / 0.2);
+}
+
+.primary:hover {
+  background: var(--ds-color-primary-hover);
+  transform: translateY(-1px);
+}
+
+.secondary {
+  background: var(--ds-color-surface);
+  border: 1px solid var(--ds-color-border-strong);
+  color: var(--ds-color-text);
+}
+
+.secondary:hover {
+  background: var(--ds-color-surface-subtle);
+  border-color: var(--ds-color-primary);
+  color: var(--ds-color-primary);
+}
+
+.search,
+.field input,
+.field select,
+.field textarea,
+.tools select,
+.calendar-tools select {
+  background: var(--ds-color-surface);
+  border-color: var(--ds-color-border-strong);
+  color: var(--ds-color-text);
+  border-radius: var(--ds-radius-sm);
+}
+
+.search {
+  min-height: 42px;
+}
+
+.search input {
+  background: transparent;
+  color: inherit;
+}
+
+.field > span {
+  color: var(--ds-color-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field input,
+.field select {
+  min-height: 44px;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--ds-color-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-color-focus) 20%, transparent);
+}
+
+/* Shared surfaces */
+.metric,
+.attention-strip,
+.today-schedule,
+.client-section,
+.tab-panel,
+.workout-editor,
+.directory-tools,
+.directory-card,
+.summary-grid article,
+.profile-columns > div,
+.report-panel,
+.week-progress-card,
+.trainer-note-card,
+.portal-history,
+.portal-plan-section,
+.portal-calendar,
+.portal-empty,
+.confirm-card,
+.client-progress-stats article,
+.client-progress-panel .progress-layout article {
+  border-color: var(--ds-color-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-color-surface);
+  box-shadow: var(--ds-shadow-sm);
+  filter: none;
+}
+
+.client-progress-panel {
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  filter: none;
+}
+
+.metrics,
+.attention-strip,
+.today-schedule,
+.client-section,
+.tab-panel,
+.workout-editor,
+.directory-tools,
+.directory-grid,
+.summary-grid,
+.profile-columns,
+.report-panel,
+.plan-banner {
+  filter: none;
+}
+
+.section-head,
+.section-title,
+.editor-head {
+  padding: 20px 22px;
+}
+
+.section-head h2,
+.section-title h2,
+.editor-head h2 {
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.section-head p,
+.section-title p,
+.editor-head p {
+  color: var(--ds-color-text-muted);
+  font-size: 13px;
+}
+
+.plan-section-heading {
+  align-items: center;
+  padding: 20px 20px;
+}
+
+.plan-section-heading h2 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.plan-section-heading p {
+  margin: 3px 0 0;
+  line-height: 1.3;
+}
+
+.plan-section-heading > span {
+  line-height: 1.2;
+}
+
+.status,
+.portal-workout-summary .workout-status,
+.client-up-next .up-next-status {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ds-radius-pill);
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Trainer shell */
+.sidebar {
+  width: var(--ds-sidebar-width);
+  padding: 28px 18px 20px;
+  background: var(--ds-color-nav);
+  box-shadow: var(--ds-shadow-nav);
+}
+
+.sidebar nav {
+  gap: 6px;
+}
+
+.sidebar nav a,
+.sidebar nav button {
+  min-height: 44px;
+  padding: 11px 12px;
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-color-nav-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sidebar nav a:hover,
+.sidebar nav button:hover,
+.sidebar nav .active {
+  background: var(--ds-color-nav-hover);
+  color: #fff;
+}
+
+.shell > main {
+  margin-left: var(--ds-sidebar-width);
+}
+
+.page,
+.nav-page,
+.plan-page,
+.calendar-page {
+  max-width: var(--ds-content-max);
+}
+
+.page {
+  padding: var(--ds-space-page-y) var(--ds-space-page-x) 72px;
+}
+
+.metrics {
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.metric {
+  min-height: 106px;
+  padding: 18px;
+  align-items: center;
+}
+
+.metric p {
+  color: var(--ds-color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.metric strong {
+  margin-top: 4px;
+  font-size: 28px;
+}
+
+.metric-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 11px;
+}
+
+.attention-strip {
+  padding: 17px 18px;
+}
+
+.tabs,
+.portal-tabs {
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--ds-color-border);
+  border-radius: 11px;
+  background: var(--ds-color-surface-subtle);
+}
+
+.tabs button,
+.portal-tabs button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ds-color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tabs button:hover,
+.portal-tabs button:hover {
+  color: var(--ds-color-primary);
+}
+
+.tabs button.active,
+.portal-tabs button.active {
+  border: 0;
+  background: var(--ds-color-surface);
+  color: var(--ds-color-primary);
+  box-shadow: 0 1px 4px rgb(20 45 29 / 0.1);
+}
+
+/* Client shell and desktop composition */
+.client-portal {
+  background: var(--ds-color-canvas);
+}
+
+.client-portal > header {
+  height: 72px;
+  padding-inline: max(24px, calc((100% - var(--ds-client-max)) / 2));
+  background: var(--ds-color-nav);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.08), var(--ds-shadow-sm);
+}
+
+.portal-actions {
+  gap: 8px;
+}
+
+.portal-actions > span {
+  margin-right: 6px;
+  color: #dbe5df;
+  font-weight: 600;
+}
+
+.portal-actions button,
+.portal-actions .theme-icon-toggle {
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ds-radius-sm);
+}
+
+.client-portal main {
+  width: 100%;
+  max-width: var(--ds-client-max);
+  padding: 14px 24px 76px;
+}
+
+.client-portal-heading {
+  margin-bottom: 22px;
+}
+
+.client-portal-heading h1 {
+  font-size: clamp(32px, 3.2vw, 42px);
+}
+
+.client-portal-heading .ds-page-description {
+  margin-bottom: 0;
+}
+
+.client-portal .portal-tabs {
+  margin: 0 0 22px;
+}
+
+/* The client home uses the full desktop canvas while retaining its mobile order. */
+.client-portal main:has(> .client-next-card) {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
+  grid-template-rows: auto auto auto auto auto;
+  column-gap: 18px;
+}
+
+.client-portal main:has(> .client-next-card) > .client-portal-heading {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.client-portal main:has(> .client-next-card) > .portal-tabs {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.client-portal main:has(> .client-next-card) > .client-next-card {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.client-portal main:has(> .client-next-card) > .rest-message {
+  grid-column: 1;
+  grid-row: 4;
+}
+
+.client-portal main:has(> .client-next-card) > .client-home-grid {
+  grid-column: 2;
+  grid-row: 3 / 5;
+  grid-template-columns: 1fr;
+  align-self: start;
+  margin: 0;
+}
+
+.client-portal main:has(> .client-next-card) > .client-up-next {
+  grid-column: 1 / -1;
+  grid-row: 5;
+}
+
+.client-today-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.client-today-primary,
+.client-today-sidebar {
+  min-width: 0;
+}
+
+.client-today-sidebar,
+.client-today-sidebar .client-home-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.client-today-sidebar .client-home-grid {
+  margin: 0;
+}
+
+.client-next-card {
+  min-height: 280px;
+  padding: 30px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 18px;
+  box-shadow: var(--ds-shadow-md);
+}
+
+.client-next-card h2 {
+  font-size: clamp(27px, 3vw, 34px);
+}
+
+.rest-message {
+  margin-top: 14px;
+}
+
+.week-progress-card,
+.trainer-note-card {
+  padding: 20px;
+}
+
+.client-up-next {
+  margin-top: 18px;
+}
+
+.client-up-next > .section-title {
+  padding: 0 2px 12px;
+}
+
+.portal-plan-section,
+.portal-calendar {
+  border-radius: var(--ds-radius-lg);
+}
+
+.portal-workout-card {
+  box-shadow: none;
+}
+
+.portal-workout-summary {
+  padding: 0 22px 24px;
+}
+
+.client-portal main:has(> .portal-plan-section) .portal-workouts article,
+.client-portal main:has(> .portal-plan-section) .confirm-card,
+.client-portal main:has(> .portal-plan-section) .portal-history,
+.client-portal main:has(> .portal-plan-section) .portal-empty {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 0 18px 0 0;
+}
+
+.client-portal main:has(> .portal-plan-section) .portal-workout-summary {
+  padding: 22px;
+}
+
+.portal-workout-title strong {
+  font-size: 16px;
+}
+
+.portal-workout-title small {
+  font-size: 12px;
+}
+
+.client-progress-stats {
+  gap: 14px;
+}
+
+.client-progress-stats article {
+  min-height: 104px;
+  padding: 18px;
+}
+
+.client-progress-stats strong {
+  font-size: 26px;
+}
+
+.client-progress-stats span {
+  font-size: 12px;
+}
+
+/* Calendar timeline primitives: direct children must not inherit hour-row grids. */
+.day-timeline > .day-hours,
+.day-timeline > .day-events {
+  display: block;
+  border-bottom: 0;
+}
+
+.week-calendar,
+.month-calendar,
+.day-calendar {
+  border-color: var(--ds-color-border);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-shadow-sm);
+  filter: none;
+}
+
+.calendar-legend {
+  flex-wrap: wrap;
+}
+
+:root[data-theme='dark'] .primary {
+  background: var(--ds-color-primary);
+  color: #102217;
+}
+
+:root[data-theme='dark'] .primary:hover {
+  background: var(--ds-color-primary-hover);
+}
+
+:root[data-theme='dark'] .secondary,
+:root[data-theme='dark'] .search,
+:root[data-theme='dark'] .field input,
+:root[data-theme='dark'] .field select,
+:root[data-theme='dark'] .field textarea,
+:root[data-theme='dark'] .tools select,
+:root[data-theme='dark'] .calendar-tools select {
+  background: var(--ds-color-surface);
+  border-color: var(--ds-color-border-strong);
+  color: var(--ds-color-text);
+}
+
+:root[data-theme='dark'] .tabs button.active,
+:root[data-theme='dark'] .portal-tabs button.active {
+  background: var(--ds-color-surface-raised);
+  color: var(--ds-color-primary);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.28);
+}
+
+@media (max-width: 1100px) {
+  .client-today-layout {
+    grid-template-columns: minmax(0, 1.4fr) minmax(270px, 0.8fr);
+  }
+
+  .next-card-art {
+    width: 130px;
+  }
+}
+
+@media (max-width: 900px) {
+  .sidebar,
+  .admin-sidebar {
+    position: sticky;
+    inset: 0 auto auto 0;
+    width: 100%;
+    height: 64px;
+    padding: 10px 14px;
+    flex-direction: row;
+    align-items: center;
+    box-shadow: var(--ds-shadow-nav);
+  }
+
+  .sidebar > .product-brand,
+  .admin-sidebar > .product-brand {
+    margin: 0 auto 0 0;
+    padding: 0;
+  }
+
+  .sidebar nav,
+  .admin-sidebar nav {
+    display: flex;
+    gap: 4px;
+  }
+
+  .sidebar nav a,
+  .sidebar nav button,
+  .admin-sidebar nav a,
+  .admin-sidebar nav button {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+
+  .sidebar nav a > span {
+    display: none;
+  }
+
+  .shell > main,
+  .admin-shell > main {
+    margin-left: 0;
+  }
+
+  .trainer-menu {
+    margin-left: 4px;
+  }
+
+  .sidebar-foot.trainer-trigger {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    place-items: center;
+    border: 0;
+  }
+
+  .trainer-trigger > .avatar,
+  .trainer-trigger > div:not(.avatar),
+  .trainer-trigger > svg:not(.mobile-user-icon) {
+    display: none;
+  }
+
+  .trainer-trigger .mobile-user-icon {
+    display: block;
+  }
+
+  .trainer-popover {
+    inset: 48px 0 auto auto;
+    width: min(260px, calc(100vw - 24px));
+  }
+
+  .page {
+    padding: 30px 20px 64px;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .client-today-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .client-portal main:has(> .client-next-card) {
+    display: block;
+  }
+
+  .client-portal main:has(> .client-next-card) > .client-home-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 15px;
+  }
+
+  .client-today-sidebar .client-home-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  :root {
+    --ds-space-page-x: 16px;
+    --ds-space-page-y: 24px;
+  }
+
+  .product-brand {
+    font-size: 17px;
+    gap: 8px;
+  }
+
+  .product-brand-mark {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .ds-page-heading {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+
+  .ds-page-heading h1 {
+    font-size: 29px;
+    letter-spacing: -0.7px;
+  }
+
+  .ds-page-description {
+    font-size: 14px;
+  }
+
+  .ds-page-heading-action,
+  .ds-page-heading-action > .primary,
+  .ds-page-heading-action > .secondary {
+    width: 100%;
+  }
+
+  .page {
+    padding: 24px 16px 56px;
+  }
+
+  .metrics {
+    gap: 10px;
+  }
+
+  .metric {
+    min-height: 92px;
+    padding: 13px;
+    gap: 10px;
+  }
+
+  .metric-icon {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .metric strong {
+    font-size: 24px;
+  }
+
+  .metric p {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .section-head,
+  .section-title,
+  .editor-head {
+    padding: 17px;
+  }
+
+  .plan-section-heading {
+    padding: 10px 14px;
+  }
+
+  .client-portal > header {
+    height: 64px;
+    padding: 0 14px;
+  }
+
+  .client-portal > header .product-brand-mark {
+    display: none;
+  }
+
+  .portal-actions {
+    gap: 2px;
+  }
+
+  .portal-actions > span {
+    display: none;
+  }
+
+  .portal-actions button,
+  .portal-actions .theme-icon-toggle {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0 8px;
+  }
+
+  .client-portal main {
+    padding: 10px 16px 60px;
+  }
+
+  .client-portal-heading {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .client-portal-heading h1 {
+    font-size: 29px;
+  }
+
+  .client-portal-heading .ds-page-heading-action,
+  .client-portal-heading .plan-availability {
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .client-portal .portal-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(max-content, 1fr));
+    margin-bottom: 18px;
+  }
+
+  .portal-tabs button {
+    padding-inline: 9px;
+    font-size: 12px;
+  }
+
+  .client-today-sidebar .client-home-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .client-portal main:has(> .client-next-card) > .client-home-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .client-next-card {
+    min-height: 0;
+    padding: 22px 20px;
+    border-radius: var(--ds-radius-lg);
+  }
+
+  .client-next-card h2 {
+    font-size: 24px;
+  }
+
+  .week-progress-card,
+  .trainer-note-card {
+    padding: 17px;
+  }
+
+  .portal-workout-summary {
+    padding: 14px 15px;
+  }
+
+  .client-progress-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .day-hours > div {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .day-hours > div > b {
+    padding-inline: 10px;
+  }
+
+  .day-events {
+    left: 64px;
+  }
+
+  .calendar-legend {
+    gap: 10px 16px;
+    padding-inline: 2px;
+  }
+
+  .calendar-legend > span:last-child {
+    flex-basis: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .sidebar .product-brand-label {
+    display: none;
+  }
+
+  .sidebar > .product-brand {
+    min-width: 32px;
+  }
+
+  .sidebar nav a,
+  .sidebar nav button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    transition: none;
+  }
+
+  .primary:hover {
+    transform: none;
+  }
+}
