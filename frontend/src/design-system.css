@@ -1028,6 +1028,30 @@ textarea {
   }
 }
 
+@media (max-width: 780px) {
+  /* Keep the key page actions full-width throughout the mobile range. */
+  .nav-page > header.page-header > .primary,
+  .calendar-page > .ds-page-heading .ds-page-heading-action,
+  .calendar-page > .ds-page-heading .ds-page-heading-action > .primary,
+  .report-page > .ds-page-heading .ds-page-heading-action,
+  .report-page .report-period-control,
+  .report-page .report-period-control > .secondary {
+    width: 100%;
+    max-width: none;
+  }
+
+  .nav-page > header.page-header > .primary,
+  .calendar-page > .ds-page-heading .ds-page-heading-action,
+  .report-page > .ds-page-heading .ds-page-heading-action,
+  .report-page .report-period-control {
+    flex: 0 0 100%;
+  }
+
+  .report-page .report-period-control > .secondary {
+    display: flex;
+  }
+}
+
 @media (max-width: 420px) {
   .sidebar .product-brand-label {
     display: none;

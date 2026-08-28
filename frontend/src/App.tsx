@@ -351,7 +351,7 @@ function ReportsPage() {
       ? {status:'attention',label:copy.followUp,message:copy.attentionMessage(signal.missed_sessions),to:`/clients/${signal.client_id}`,action:copy.profile}
       : {status:'needs_plan',label:copy.review,message:copy.reviewMessage,to:`/clients/${signal.client_id}/plan`,action:copy.reviewPlan};
 
-  return <Shell active="reports"><div className="page nav-page">
+  return <Shell active="reports"><div className="page nav-page report-page">
     <PageHeading className="page-header" eyebrow={copy.eyebrow} title={copy.title} description={copy.intro} action={<div className="report-period-control"><select className="secondary" aria-label={copy.choosePeriod} value={period} onChange={event=>setPeriod(event.target.value as ReportPeriod)}><option value="this_week">{copy.thisWeek}</option><option value="last_week">{copy.lastWeek}</option><option value="last_30_days">{copy.last30}</option></select><ChevronDown size={16}/></div>}/>
     <div className="report-results">
     <section className="metrics report-metrics">
