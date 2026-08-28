@@ -1033,6 +1033,7 @@ textarea {
   .nav-page > header.page-header > .primary,
   .calendar-page > .ds-page-heading .ds-page-heading-action,
   .calendar-page > .ds-page-heading .ds-page-heading-action > .primary,
+  .calendar-page .schedule-page-action,
   .report-page > .ds-page-heading .ds-page-heading-action,
   .report-page .report-period-control,
   .report-page .report-period-control > .secondary {
@@ -1045,6 +1046,10 @@ textarea {
   .report-page > .ds-page-heading .ds-page-heading-action,
   .report-page .report-period-control {
     flex: 0 0 100%;
+  }
+
+  .calendar-page .schedule-page-action {
+    display: flex;
   }
 
   .report-page .report-period-control > .secondary {
