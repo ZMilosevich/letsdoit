@@ -1030,6 +1030,16 @@ textarea {
 
 @media (max-width: 780px) {
   /* Keep the key page actions full-width throughout the mobile range. */
+  .calendar-page .ds-page-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .calendar-page .ds-page-heading-action {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
   .nav-page > header.page-header > .primary,
   .calendar-page > .ds-page-heading .ds-page-heading-action,
   .calendar-page > .ds-page-heading .ds-page-heading-action > .primary,
