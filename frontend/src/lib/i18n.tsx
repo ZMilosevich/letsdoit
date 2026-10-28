@@ -66,11 +66,11 @@ function translateCroatian(value: string): string {
   return value;
 }
 
-const Context = createContext<{ language: Language; setLanguage: (language: Language) => void; t: (value: string) => string }>({ language: 'hr', setLanguage: () => undefined, t: (value) => value });
+const Context = createContext<{ language: Language; setLanguage: (language: Language) => void; t: (value: string) => string }>({ language: 'en', setLanguage: () => undefined, t: (value) => value });
 const canonicalEnglish: Record<string,string> = { 'Snaga gornjeg dijela tijela':'Upper body build' };
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => (localStorage.getItem('formwork-language') === 'en' ? 'en' : 'hr'));
+  const [language, setLanguageState] = useState<Language>(() => (localStorage.getItem('formwork-language') === 'hr' ? 'hr' : 'en'));
   const setLanguage = (next: Language) => { localStorage.setItem('formwork-language', next); setLanguageState(next); };
   const t = (value: string) => language === 'hr' ? translateCroatian(value) : canonicalEnglish[value] || Object.entries(hr).find(([, translated]) => translated === value)?.[0] || value;
   useEffect(() => { document.documentElement.lang = language; document.title = language === 'hr' ? 'LetsDoIt · Prostor za trenere' : 'LetsDoIt · Trainer workspace'; }, [language]);
